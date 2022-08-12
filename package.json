@@ -1,6 +1,6 @@
 {
   "name": "mprog",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Metaphoric programming",
   "repository": "git@github.com:jyrobin/mprog",
   "author": "Jing-Ying Chen <jy.robin.chen@gmail.com>",
