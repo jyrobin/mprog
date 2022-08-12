@@ -11,5 +11,11 @@
   "dependencies": {
     "immutable": "^4.1.0",
     "typescript": "^4.7.4"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./meta": "./dist/meta.js",
+    "./actor": "./dist/actor.js",
+    "./domain": "./dist/domain.js"
   }
 }
