@@ -1,0 +1,15 @@
+{
+  "name": "mprog",
+  "version": "0.1.0",
+  "description": "Metaphoric programming",
+  "repository": "git@github.com:jyrobin/mprog",
+  "author": "Jing-Ying Chen <jy.robin.chen@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "immutable": "^4.1.0",
+    "typescript": "^4.7.4"
+  }
+}
