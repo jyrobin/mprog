@@ -1,0 +1,2 @@
+# mprog
+Metaphoric programming
