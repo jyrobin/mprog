@@ -1,4 +1,4 @@
-import { Map, List, Record } from 'immutable';
+import { Map, List, Record, fromJS, isKeyed } from 'immutable';
 
 const Truth = Map<string, boolean>({
 	'1': true, 'true': true, 'yes': true, 'on': true,
@@ -10,6 +10,10 @@ export const ErrorKind = 'Error';
 export type StrMap = Map<string, string>
 export type MetaMap = Map<string, Meta>
 export type MetaList = List<Meta>
+
+export interface Mpi {
+	call(method: string, meta: Meta, ...options: Meta[]): Promise<Meta>
+}
 
 export type MetaType = {
 	kind?: string
@@ -56,6 +60,7 @@ export interface Meta {
 	floatsAttr(name: string, sep?: string, skip?: boolean): number[]|undefined
 
 	isError(): boolean
+	parseError(defaultCode: number): [string, number]
 	isValid(): boolean
 
 	withMethod(mthd: string): Meta
@@ -84,7 +89,8 @@ export interface Meta {
 	specializes(m: Meta): boolean
 
 	walk(v: Visitor): void
-	//json(...opts: string[]): string
+	json(...opts: string[]): string
+	toJS(): any
 }
 
 export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
@@ -96,10 +102,43 @@ export function newMeta(mt: MetaType, ...attrs: string[]): Meta {
 	let ret = new MetaRecord(mt);
 	return attrs.length > 0 ? ret.withAttr(...attrs) : ret;
 }
-export function newError(msg: string, code?: string) {
-	let ret = newMeta({kind: ErrorKind}, 'msg', msg);
-	return code ? ret.withAttr('code', code) : ret;
+export function newError(msg: string, code?: string|number) {
+	let ret = newMeta({kind: ErrorKind}, 'message', msg);
+    return code === undefined ? ret : ret.withAttr('code', code + '');
 }
+
+export function parseMeta(str: string): Meta {
+	let obj = JSON.parse(str);
+	return toMeta(obj);
+} 
+
+export function toMeta(obj: any): Meta {
+	return toMetaRecord(obj);
+}
+
+export function toMetaRecord(obj: any): MetaRecord {
+	let { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = obj;
+	return new MetaRecord({
+		kind, method, ns, gid, payload,
+		tags: tags && Map<string, string>(tags),
+		attrs: attrs && Map<string, string>(attrs),
+		subs: subs && toMetaMap(subs),
+		rels: rels && toMetaMap(rels),
+		list: list && List<Meta>(list.map(toMetaRecord)),
+	})
+}
+
+export function toMetaMap(obj: any): MetaMap {
+	let ret = Map<string, Meta>();
+	for (let key in Object.keys(obj)) {
+		ret = ret.set(key, toMetaRecord(obj[key]));
+	}
+	return ret;
+} 
+
+export function toMetaList(obj: any): MetaList {
+	return List<Meta>(obj.map(toMeta));
+} 
 
 export class MetaRecord extends Record({
 	kind: '',
@@ -186,6 +225,10 @@ export class MetaRecord extends Record({
 	isError() {
 		return this.kind === ErrorKind;
 	}
+	parseError(defaultCode: number): [string, number] {
+        return [this.attr('message') || '', toInt(this.attr('code'), defaultCode)]
+	}
+
 	isValid() {
 		return !!this.kind && this.kind !== ErrorKind;
 	}
@@ -225,10 +268,10 @@ export class MetaRecord extends Record({
 		return this.subs.has(name);
 	}
 	withSub(name: string, sub: Meta) {
-		return this.set("subs", this.subs.set(name, sub));
+		return this.set('subs', this.subs.set(name, sub));
 	}
 	withSubs(subs: MetaMap) {
-		return this.set("subs", this.subs.merge(subs));
+		return this.set('subs', this.subs.merge(subs));
 	}
 
 	rel(name: string): Meta {
@@ -238,10 +281,10 @@ export class MetaRecord extends Record({
 		return this.rels.has(name);
 	}
 	withRel(name: string, rel: Meta) {
-		return this.set("rels", this.rels.set(name, rel));
+		return this.set('rels', this.rels.set(name, rel));
 	}
 	withRels(rels: MetaMap) {
-		return this.set("rels", this.rels.merge(rels));
+		return this.set('rels', this.rels.merge(rels));
 	}
 
 	withList(list: MetaList, trims?: boolean) {
@@ -268,6 +311,10 @@ export class MetaRecord extends Record({
 
 	specializes(n: Meta): boolean {
 		return n.generalizes(this);
+	}
+
+	json(...opts: string[]): string {
+		return JSON.stringify(this, null, opts[0]);
 	}
 
 	// traverse

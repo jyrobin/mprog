@@ -1,15 +1,13 @@
 
 import { Map, List, Record } from 'immutable';
-import { Meta, Nil, newError, newMeta } from './meta';
+import { Meta, Nil, Mpi, newError } from './meta';
 import { Actor, ActorMap, ActorList, ActorListMap } from './actor';
 
-export interface Mpi {
-	isNil(): boolean
-
-	call(method: string, m: Meta, ...opts: Meta[]): Meta
-}
-
 export type DomainList = List<Domain>;
+
+export function newDomainList(...domains: Domain[]): DomainList {
+	return List<Domain>(domains);
+}
 
 export type DomainType = {
 	parent?: Domain
@@ -108,6 +106,7 @@ export function simpleIndexer(dom: Domain): Indexer {
 		}
 	}
 
+
 	return new IndexerRecord({
 		gidActors: gmap,
 		kindActorLists: kmap,
@@ -139,10 +138,6 @@ export class DomainImpl implements Domain {
 		this.subs = subs || List<Domain>();
 	}
 
-	isNil() {
-		return this.meta.isNil()
-	}
-
 	root(): Domain {
 		let root: Domain = this;
 		while (root.parent) {
@@ -160,13 +155,14 @@ export class DomainImpl implements Domain {
 		return undefined 
 	}
 
-	call(mthd: string, m: Meta, ...opts: Meta[]) {
-		let actor = this.indexer().actorWithMethod(m.kind, mthd);
+	async call(method: string, meta: Meta, ...options: Meta[]) {
+		let idx = this.indexer();
+		let actor = this.indexer().actorWithMethod(meta.kind, method);
 		if (actor) {
-			let ret = actor.process(m, ...opts);
+			let ret = actor.process(meta, ...options);
 			return ret === undefined ? Nil : ret;
 		}
-		return newError(`Actor ${mthd} for ${m.kind} not found`)
+		return newError(`Actor ${method} for ${meta.kind} not found`)
 	}
 
 	list(m: Meta, ...filters: Meta[]) {

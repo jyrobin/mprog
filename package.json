@@ -6,7 +6,7 @@
   "author": "Jing-Ying Chen <jy.robin.chen@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc --build"
   },
   "dependencies": {
     "@types/node": "^18.7.2",
@@ -15,9 +15,11 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./meta": "./dist/meta.js",
-    "./actor": "./dist/actor.js",
-    "./domain": "./dist/domain.js"
+    "./meta": "./dist/meta.js"
   },
-  "types": "./dist/index.d.ts"
+  "typesVersions": {
+    "*": {
+      "meta": ["dist/meta"]
+    }
+  }
 }
