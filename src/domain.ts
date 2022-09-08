@@ -1,6 +1,6 @@
 
 import { Map, List, Record } from 'immutable';
-import { Meta, Nil, Mpi, newError } from './meta';
+import { Meta, MetaMap, Nil, Mpi, newError } from './meta';
 import { Actor, ActorMap, ActorList, ActorListMap } from './actor';
 
 export type DomainList = List<Domain>;
@@ -155,27 +155,27 @@ export class DomainImpl implements Domain {
 		return undefined 
 	}
 
-	async call(method: string, meta: Meta, ...options: Meta[]) {
+	async call(method: string, meta: Meta, ctx?: MetaMap) {
 		let idx = this.indexer();
 		let actor = this.indexer().actorWithMethod(meta.kind, method);
 		if (actor) {
-			let ret = actor.process(meta, ...options);
+			let ret = actor.process(meta, ctx);
 			return ret === undefined ? Nil : ret;
 		}
 		return newError(`Actor ${method} for ${meta.kind} not found`)
 	}
 
-	list(m: Meta, ...filters: Meta[]) {
-		return this.call('list', m, ...filters)
+	list(m: Meta, ctx?: MetaMap) {
+		return this.call('list', m, ctx)
 	}
-	find(m: Meta, ...filters: Meta[]) {
-		return this.call('find', m, ...filters)
+	find(m: Meta, ctx?: MetaMap) {
+		return this.call('find', m, ctx)
 	}
-	create(m: Meta, ...filters: Meta[]) {
-		return this.call('create', m, ...filters)
+	create(m: Meta, ctx?: MetaMap) {
+		return this.call('create', m, ctx)
 	}
-	make(m: Meta, ...filters: Meta[]) {
-		return this.call('make', m, ...filters)
+	make(m: Meta, ctx?: MetaMap) {
+		return this.call('make', m, ctx)
 	}
 
 	// reentrant-able as domain itself is constant

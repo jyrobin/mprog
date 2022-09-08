@@ -1,8 +1,8 @@
 
 export { Map, List, Record } from 'immutable';
 export {
-	MetaType, Meta, MetaList, Nil, Mpi,
-	parseMeta, toMeta, toMetaMap, toMetaRecord, toMetaList,
+	MetaType, Meta, MetaMap, MetaList, Nil, Mpi,
+	parseMeta, toMeta, toMetaMap, toMetaList,
 	newMeta, simpleMeta
 } from './meta';
 export {

@@ -7,16 +7,18 @@ const Truth = Map<string, boolean>({
 
 export const ErrorKind = 'Error';
 
-export type StrMap = Map<string, string>
-export type MetaMap = Map<string, Meta>
-export type MetaList = List<Meta>
+export type StrKeyMap = { [key: string]: string }
+export type StrMetaMap = { [key: string]: Meta }
+export type StrMap = Readonly<StrKeyMap>
+export type MetaMap = Readonly<StrMetaMap>
+export type MetaList = Readonly<Meta[]>
 
 export interface Mpi {
-	call(method: string, meta: Meta, ...options: Meta[]): Promise<Meta>
+	call(method: string, meta: Meta, ctx?: MetaMap): Promise<Meta>
 }
 
 export type MetaType = {
-	kind?: string
+	kind: string
 	method?: string
 	ns?: string
 	gid?: string
@@ -29,27 +31,27 @@ export type MetaType = {
 }
 
 export interface Meta {
-	kind: string
-	method: string
-	ns: string
-	gid: string
-	tags: StrMap
-	attrs: StrMap
-	payload: string
-	subs: MetaMap,
-	rels: MetaMap,
-	list: MetaList,
+	readonly kind: string
+	readonly method?: string
+	readonly ns?: string
+	readonly gid?: string
+	readonly payload?: string
+	readonly tags: StrMap
+	readonly attrs: StrMap
+	readonly subs: MetaMap
+	readonly rels: MetaMap
+	readonly list: MetaList
 
 	isNil(): boolean
 
 	tag(name: string): string|undefined
 	hasTag(...args: string[]): boolean
-	hasTags(tags: StrMap): boolean 
+	hasTags(tags: StrKeyMap): boolean 
 	is(kind: string, ns: string, ...tags: string[]): boolean
 
 	attr(name: string): string|undefined
 	hasAttr(...args: string[]): boolean
-	hasAttrs(attrs: StrMap): boolean
+	hasAttrs(attrs: StrKeyMap): boolean
 	intAttr(name: string, otherwise?: number): number
 	boolAttr(name: string): boolean|undefined
 	isTrueAttr(name: string): boolean
@@ -65,41 +67,39 @@ export interface Meta {
 
 	withMethod(mthd: string): Meta
 	withGid(gid: string): Meta
-
-	withTag(name: string, value: string, ...rest: string[]): Meta
-	withTags(tags: StrMap): Meta
-	withAttr(...args: string[]): Meta
-	withAttrs(attrs: StrMap): Meta
-
 	withPayload(data: string): Meta
 
+	withTag(name: string, value: string, ...rest: string[]): Meta
+	withTags(tags: StrKeyMap): Meta
+	withAttr(...args: string[]): Meta
+	withAttrs(attrs: StrKeyMap): Meta
+
 	withSub(name: string, sub: Meta): Meta
-	withSubs(subs: MetaMap): Meta
+	withSubs(subs: StrMetaMap): Meta
 	hasSub(name: string): boolean
 	sub(name: string): Meta
 
 	withRel(name: string, rel: Meta): Meta
-	withRels(rels: MetaMap): Meta
+	withRels(rels: StrMetaMap): Meta
 	hasRel(name: string): boolean
 	rel(name: string): Meta
 
-	withList(list: MetaList, trims?: boolean): Meta
+	withList(list: Meta[], trims?: boolean): Meta
 
 	generalizes(m: Meta): boolean
 	specializes(m: Meta): boolean
 
 	walk(v: Visitor): void
 	json(...opts: string[]): string
-	toJS(): any
 }
 
 export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
-	return new MetaRecord({
-		kind, method, tags: toStrMap(tags),
+	return new SimpleMeta({
+		kind, method, tags: arrayToStrMap(tags),
 	});
 }
 export function newMeta(mt: MetaType, ...attrs: string[]): Meta {
-	let ret = new MetaRecord(mt);
+	let ret = new SimpleMeta(mt);
 	return attrs.length > 0 ? ret.withAttr(...attrs) : ret;
 }
 export function newError(msg: string, code?: string|number) {
@@ -113,67 +113,73 @@ export function parseMeta(str: string): Meta {
 } 
 
 export function toMeta(obj: any): Meta {
-	return toMetaRecord(obj);
-}
-
-export function toMetaRecord(obj: any): MetaRecord {
 	let { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = obj;
-	return new MetaRecord({
+	return new SimpleMeta({
 		kind, method, ns, gid, payload,
-		tags: tags && Map<string, string>(tags),
-		attrs: attrs && Map<string, string>(attrs),
-		subs: subs && toMetaMap(subs),
-		rels: rels && toMetaMap(rels),
-		list: list && List<Meta>(list.map(toMetaRecord)),
-	})
+		tags: toStrMap(tags),
+		attrs: toStrMap(attrs),
+		subs: toMetaMap(subs),
+		rels: toMetaMap(rels),
+		list: toMetaList(list),
+	});
 }
 
-export function toMetaMap(obj: any): MetaMap {
-	let ret = Map<string, Meta>();
+export function toMetaMap(obj: any): MetaMap|undefined {
+	if (obj === undefined) return undefined;
+
+	let ret: StrMetaMap = {};
 	for (let key in Object.keys(obj)) {
-		ret = ret.set(key, toMetaRecord(obj[key]));
+		ret[key] = toMeta(obj[key]) 
 	}
-	return ret;
+	return ret; 
 } 
 
 export function toMetaList(obj: any): MetaList {
-	return List<Meta>(obj.map(toMeta));
-} 
+	return obj.map(toMeta);
+}
 
-export class MetaRecord extends Record({
-	kind: '',
-	method: '',
-	ns: '',
-	gid: '',
-	payload: '',
-	tags: Map<string, string>() as StrMap,
-	attrs: Map<string, string>() as StrMap,
-	subs: Map<string, Meta>() as MetaMap,
-	rels: Map<string, Meta>() as MetaMap,
-	list: List<Meta>() as MetaList,
-}) implements Meta {
+export class SimpleMeta implements Meta {
+	readonly kind: string
+	readonly method?: string
+	readonly ns?: string
+	readonly gid?: string
+	readonly payload?: string 
+	readonly tags: StrMap
+	readonly attrs: StrMap
+	readonly subs: MetaMap
+	readonly rels: MetaMap
+	readonly list: MetaList 
 	constructor(mt: MetaType) {
-		super(mt);
+		const { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = mt;
+		this.kind = kind;
+		method && (this.method = method);
+		ns && (this.ns = ns);
+		gid && (this.gid = gid);
+		payload && (this.payload = payload);
+		this.tags = tags || {};
+		this.attrs = attrs || {};
+		this.subs = subs || {};
+		this.rels = rels || {};
+		this.list = list || [];
 	}
 
 	isNil() {
-		return !this.kind;
+		return this.kind === '';
 	}
 	tag(name: string) {
-		return this.tags.get(name);
+		return this.tags[name];
 	}
 	hasTag(...args: string[]) {
 		return hasValue(this.tags, args);
 	}
-
-	hasTags(ts: StrMap) {
+	hasTags(ts: StrKeyMap) {
 		return hasValues(this.tags, ts)
 	}
 	is(kind: string, ns?: string, ...tags: string[]) {
 		return this.kind === kind && this.ns === (ns || '') && this.hasTag(...tags);
 	}
 	attr(name: string) {
-		return this.attrs.get(name);
+		return this.attrs[name];
 	}
 	hasAttr(...args: string[]) {
 		return hasValue(this.attrs, args);
@@ -181,6 +187,7 @@ export class MetaRecord extends Record({
 	hasAttrs(ts: StrMap) {
 		return hasValues(this.attrs, ts)
 	}
+
 	intAttr(name: string, otherwise?: number) {
 		return toInt(this.attr(name), otherwise);
 	}
@@ -233,74 +240,71 @@ export class MetaRecord extends Record({
 		return !!this.kind && this.kind !== ErrorKind;
 	}
 
-	withMethod(mthd: string) {
-		return this.set('method', mthd);
+	withMethod(method: string): Meta {
+		return new SimpleMeta({ ...this, method });
 	}
 
 	withGid(gid: string) {
-		return this.set('gid', gid);
-	}
-
-	withTag(...args: string[]) {
-		return this.withTags(toStrMap(args));
-	}
-
-	withTags(ts: StrMap) {
-		return this.set('tags', this.tags.merge(ts));
-	}
-
-	withAttr(...args: string[]) {
-		return this.withAttrs(toStrMap(args));
-	}
-
-	withAttrs(attrs: StrMap) {
-		return this.set('attrs', this.attrs.merge(attrs));
+		return new SimpleMeta({ ...this, gid });
 	}
 
 	withPayload(payload: string) {
-		return this.set('payload', payload);
+		return new SimpleMeta({ ...this, payload });
+	}
+
+	withTag(...args: string[]) {
+		return new SimpleMeta({ ...this, tags: arrayToStrMap(args) });
+	}
+
+	withTags(tags: StrKeyMap) {
+		return new SimpleMeta({ ...this, tags });
+	}
+
+	withAttr(...args: string[]) {
+		return new SimpleMeta({ ...this, attrs: arrayToStrMap(args) });
+	}
+
+	withAttrs(attrs: StrMap) {
+		return new SimpleMeta({ ...this, attrs });
 	}
 
 	sub(name: string): Meta {
-		return this.subs.get(name) || Nil;
+		return this.subs[name] || Nil;
 	}
 	hasSub(name: string) {
-		return this.subs.has(name);
+		return !!this.subs[name];
 	}
 	withSub(name: string, sub: Meta) {
-		return this.set('subs', this.subs.set(name, sub));
+		return new SimpleMeta({ ...this, subs: this.subs });
 	}
 	withSubs(subs: MetaMap) {
-		return this.set('subs', this.subs.merge(subs));
+		return new SimpleMeta({ ...this, subs });
 	}
-
 	rel(name: string): Meta {
-		return this.rels.get(name) || Nil;
+		return this.rels[name] || Nil;
 	}
 	hasRel(name: string) {
-		return this.rels.has(name);
+		return !!this.rels[name];
 	}
 	withRel(name: string, rel: Meta) {
-		return this.set('rels', this.rels.set(name, rel));
+		return new SimpleMeta({ ...this, subs: this.rels });
 	}
 	withRels(rels: MetaMap) {
-		return this.set('rels', this.rels.merge(rels));
+		return new SimpleMeta({ ...this, rels });
 	}
 
-	withList(list: MetaList, trims?: boolean) {
-		if (trims) {
-			list = list.filter(item => !!item);
-		}
-		return this.set('list', list);
+	withList(list: Meta[], trims?: boolean) {
+		list = !trims ? list : list.filter(m => !m.isNil());
+		return new SimpleMeta({ ...this, list });
 	}
 
 	listItem(idx: number) {
-		return this.list.get(idx);
+		return this.list[idx];
 	}
 
 	generalizes(n: Meta): boolean {
-		if (this.kind == n.kind) {
-			for (let [k, v] of this.tags) {
+		if (this.kind === n.kind) {
+			for (let [k, v] of Object.entries(this.tags)) {
 				if (!n.hasTag(k, v)) {
 					return false
 				}
@@ -324,32 +328,43 @@ export class MetaRecord extends Record({
 	}
 }
 
+export function toStrMap(obj: any): StrMap {
+	let ret: StrKeyMap = {};
+	for (let [k, v] of Object.entries(obj)) {
+		if (typeof v === 'string') {
+			ret[k] = v;
+		}
+	}
+	return ret;
+}
+
+export function arrayToStrMap(args: string[]): StrMap {
+	let ret: StrKeyMap = {};
+	for (let i=1, n=args.length; i < n; i+=2) {
+		ret[args[i-1]] = args[i];
+	}
+	return ret;
+}
+
 function hasValue(vals: StrMap, args: string[]): boolean {
 	let argn = args.length;
 	for (let i=0, n=argn/2; i < n; i++) {
 		let key = args[2*i];
-		if (!vals.has(key) || vals.get(key) !== args[2*i+1]) {
+		let val = vals[key];
+		if (val === undefined || val !== args[2*i+1]) {
 			return false
 		}
 	}
-	return argn%2 === 0 || vals.has(args[argn-1]);
+	return argn%2 === 0 || vals[args[argn-1]] !== undefined;
 }
 
 function hasValues(vals: StrMap, ts: StrMap): boolean {
-	for(let [key, value] of ts) {
-		if (vals.get(key) !== value) {
+	for(let [key, value] of Object.entries(ts)) {
+		if (vals[key] !== value) {
 			return false;
 		}
 	}
 	return true;
-}
-
-export function toStrMap(args: string[]): StrMap {
-	let ret = Map<string, string>();
-	for (let i=1, n=args.length; i < n; i+=2) {
-		ret = ret.set(args[i-1], args[i]);
-	}
-	return ret;
 }
 
 function toNumber(s: string|undefined, otherwise?: number): number {
@@ -371,10 +386,10 @@ function splitNumbers(s: string|undefined, fn: ((s: string) => number), sep?: st
 	return skip || words.length === ret.length ? ret : undefined;
 }
 
-export const Nil: Meta = new MetaRecord({});
+export const Nil: Meta = new SimpleMeta({kind: ''});
 
 export interface Visitor {
-	beginMeta(m: Meta, kind: string, method: string, ns: string, gid: string): void;
+	beginMeta(m: Meta, kind: string, method?: string, ns?: string, gid?: string): void;
 	onTag(m: Meta, name: string, value: string): void
 	onAttr(m: Meta, name: string, value: string): void
 	onSub(m: Meta, name: string, sub: Meta): void
@@ -385,18 +400,18 @@ export interface Visitor {
 
 function walk(m: Meta, v: Visitor) {
 	v.beginMeta(m, m.kind, m.method, m.ns, m.gid)
-	m.tags.forEach((tag, name) => v.onTag(m, name, tag));
-	m.attrs.forEach((attr, name) => v.onAttr(m, name, attr));
-	m.subs.forEach((sub, name) => v.onSub(m, name, sub));
-	m.rels.forEach((rel, name) => v.onRel(m, name, rel));
-	m.list.forEach((item, idx) => v.onListItem(m, idx, item))
+	for (let [key, val] of Object.entries(m.tags)) { v.onTag(m, key, val); }
+	for (let [key, val] of Object.entries(m.attrs)) { v.onAttr(m, key, val); }
+	for (let [key, val] of Object.entries(m.subs)) { v.onSub(m, key, val); }
+	for (let [key, val] of Object.entries(m.rels)) { v.onRel(m, key, val); }
+	m.list.forEach((item, idx) => v.onListItem(m, idx, item));
 	v.endMeta(m)
 }
 
 // utils
 
 export function first(ms: MetaList): Meta {
-	return ms.get(0) || Nil;
+	return ms[0] || Nil;
 }
 
 export function firstAttr(ms: MetaList, name: string): string|undefined {

@@ -1,5 +1,5 @@
 
-import { Domain, toMeta, toMetaList } from '../index';
+import { Domain, toMeta, toMetaMap } from '../index';
 
 export function mountMpi(router: any, prefix: string, dom: Domain) {
     router.post(`${prefix}/call`, async (req: any, res: any) => {
@@ -7,13 +7,12 @@ export function mountMpi(router: any, prefix: string, dom: Domain) {
 		console.log(body);
 
 		// TODO: try and 400
-		let { method, meta, options } = body;
-		let ms = options ? toMetaList(options) : []; 
-		let ret = await dom.call(method, toMeta(meta), ...ms);
+		let { method, meta, ctx } = body;
+		let ret = await dom.call(method, toMeta(meta), toMetaMap(ctx));
 		if (ret.isError()) {
-			res.json(400, ret.json())
+			res.json(400, ret);
 		} else {
-			res.json(200, ret.json());
+			res.json(200, ret);
 		}
-	})
+	});
 }
