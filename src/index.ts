@@ -1,10 +1,12 @@
 
-export { Map, List, Record } from 'immutable';
 export {
 	MetaType, Meta, MetaMap, MetaList, Nil, Mpi,
 	parseMeta, toMeta, toMetaMap, toMetaList,
 	newMeta, simpleMeta
 } from './meta';
+
+// below for implementation
+
 export {
 	Actor, ActorList, newActorList,
 	simpleActor, simpleFinder, simpleLister, simpleCreator, simpleMaker

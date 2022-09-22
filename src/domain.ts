@@ -10,16 +10,23 @@ export function newDomainList(...domains: Domain[]): DomainList {
 }
 
 export type DomainType = {
+	uri?: string
 	parent?: Domain
 	meta?: Meta
 	actors?: ActorList
+	ctrls?: ActorList
 	subs?: DomainList
+	closer?: () => Promise<void>
 }
+
+// although an interface, a domain actually implements things
 
 export interface Domain extends Mpi {
 	readonly parent?: Domain
+	readonly uri: string
 	readonly meta: Meta
 	readonly actors: ActorList
+	readonly ctrls: ActorList
 	readonly subs: DomainList
 	sub(name: string): Domain|undefined
 	indexer(): Indexer
@@ -29,15 +36,18 @@ export interface Indexer {
 	gidActors: ActorMap
 	kindActorLists: ActorListMap
 	methodActors: ActorMap
+	ctrlActors: ActorMap
 	actorWithGid(gid: string): Actor|undefined
 	actorsWithKind(kind: string): ActorList|undefined
 	actorWithMethod(kind: string, method: string): Actor|undefined
+	actorWithCtrl(method: string, kind?: string): Actor|undefined
 }
 
 export class IndexerRecord extends Record({
 	gidActors: Map<string, Actor>(),
 	kindActorLists: Map<string, ActorList>(),
 	methodActors: Map<string, Actor>(),
+	ctrlActors: Map<string, Actor>(),
 }) implements Indexer {
 	actorWithGid(gid: string) {
 		return this.gidActors.get(gid);
@@ -48,12 +58,16 @@ export class IndexerRecord extends Record({
 	actorWithMethod(kind: string, method: string) {
 		return this.methodActors.get(kind+'.'+method);
 	}
+	actorWithCtrl(method: string, kind?: string) {
+		return this.ctrlActors.get(kind ? kind+'.'+method : method);
+	}
 }
 
 export function simpleIndexer(dom: Domain): Indexer {
 	let gmap = Map<string, Actor>();
 	let kmap = Map<string, ActorList>();
 	let mmap = Map<string, Actor>();
+	let cmap = Map<string, Actor>();
 	for (let actor of dom.actors) {
 		let am = actor.meta;
 		let gid = am.gid;
@@ -106,11 +120,32 @@ export function simpleIndexer(dom: Domain): Indexer {
 		}
 	}
 
+	for (let actor of dom.ctrls) {
+		let am = actor.meta;
+		if (am.method) {
+			let kind = am.tag('target') // override target rel
+			if (!kind) {
+				let tm = am.rel('target');
+				if (tm.kind) {
+					kind = tm.kind
+					if (tm.ns) {
+						kind = tm.ns + ':' + kind;
+					}
+				}
+			}
+
+			let key = kind ? kind + '.' + am.method : am.method;
+			if (!cmap.has(key)) {
+				cmap = cmap.set(key, actor);
+			}
+		}
+	}
 
 	return new IndexerRecord({
 		gidActors: gmap,
 		kindActorLists: kmap,
 		methodActors: mmap,
+		ctrlActors: cmap,
 	});
 }
 
@@ -127,15 +162,21 @@ export function newDomain(dt: DomainType): Domain {
 
 export class DomainImpl implements Domain {
 	readonly meta: Meta;
+	readonly uri: string;
 	readonly parent: Domain|undefined
 	readonly actors: ActorList;
 	readonly subs: DomainList;
+	readonly ctrls: ActorList;
+	readonly closer?: () => Promise<void>;
 	private idxer: Indexer|undefined;
-	constructor({ parent, meta, actors, subs }: DomainType) {
+	constructor({ parent, uri, meta, actors, subs, ctrls, closer }: DomainType) {
 		this.parent = parent;
+		this.uri = uri || '';
 		this.meta = meta || Nil;
 		this.actors = actors || List<Actor>();
 		this.subs = subs || List<Domain>();
+		this.ctrls = ctrls || List<Actor>();
+		this.closer = closer;
 	}
 
 	root(): Domain {
@@ -156,13 +197,32 @@ export class DomainImpl implements Domain {
 	}
 
 	async call(method: string, meta: Meta, ctx?: MetaMap) {
-		let idx = this.indexer();
+		if (meta.isNil()) {
+			return newError(`Calling ${method} with nil meta`);
+		}
+
 		let actor = this.indexer().actorWithMethod(meta.kind, method);
 		if (actor) {
 			let ret = actor.process(meta, ctx);
 			return ret === undefined ? Nil : ret;
 		}
 		return newError(`Actor ${method} for ${meta.kind} not found`)
+	}
+
+	async ctrl(method: string, meta: Meta = Nil, ctx?: MetaMap) {
+		// hack for now?
+		if (this.closer && method === 'close' && meta.isNil()) {
+			await this.closer();
+			return Nil;
+		}
+
+		let kind = meta.kind;
+		let actor = this.indexer().actorWithCtrl(method, kind);
+		if (actor) {
+			let ret = actor.process(meta, ctx);
+			return ret === undefined ? Nil : ret;
+		}
+		return newError(`Control ${method}` + (kind?` for ${kind}`:'') + ' not found');
 	}
 
 	list(m: Meta, ctx?: MetaMap) {

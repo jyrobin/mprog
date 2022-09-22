@@ -1,20 +1,22 @@
-import { Map, List, Record, fromJS, isKeyed } from 'immutable';
-
-const Truth = Map<string, boolean>({
-	'1': true, 'true': true, 'yes': true, 'on': true,
-	'0': false, 'false': false, 'no': false, 'off': false,
-});
 
 export const ErrorKind = 'Error';
 
-export type StrKeyMap = { [key: string]: string }
+export type Attr = string | number | boolean | null |
+	Readonly<string[]> | Readonly<number[]> | Readonly<boolean[]>;
+
+export type StrStrMap = { [key: string]: string }
+export type StrAttrMap = { [key: string]: Attr }
+export type StrDomMap = { [key: string]: StrAttrMap } // key is domain URI
 export type StrMetaMap = { [key: string]: Meta }
-export type StrMap = Readonly<StrKeyMap>
+export type StrMap = Readonly<StrStrMap>
+export type AttrMap = Readonly<StrAttrMap>
+export type DomMap = Readonly<{ [key: string]: AttrMap }>
 export type MetaMap = Readonly<StrMetaMap>
 export type MetaList = Readonly<Meta[]>
 
 export interface Mpi {
 	call(method: string, meta: Meta, ctx?: MetaMap): Promise<Meta>
+	ctrl(method: string, meta?: Meta, ctx?: MetaMap): Promise<Meta>
 }
 
 export type MetaType = {
@@ -22,9 +24,10 @@ export type MetaType = {
 	method?: string
 	ns?: string
 	gid?: string
-	payload?: string
+	payload?: Attr
 	tags?: StrMap
-	attrs?: StrMap
+	attrs?: AttrMap
+	doms?: DomMap
 	subs?: MetaMap
 	rels?: MetaMap
 	list?: MetaList
@@ -35,9 +38,9 @@ export interface Meta {
 	readonly method?: string
 	readonly ns?: string
 	readonly gid?: string
-	readonly payload?: string
+	readonly payload?: Attr
 	readonly tags: StrMap
-	readonly attrs: StrMap
+	readonly attrs: AttrMap
 	readonly subs: MetaMap
 	readonly rels: MetaMap
 	readonly list: MetaList
@@ -46,20 +49,14 @@ export interface Meta {
 
 	tag(name: string): string|undefined
 	hasTag(...args: string[]): boolean
-	hasTags(tags: StrKeyMap): boolean 
+	hasTags(tags: StrStrMap): boolean 
 	is(kind: string, ns: string, ...tags: string[]): boolean
 
-	attr(name: string): string|undefined
+	attr(name: string): Attr|undefined
 	hasAttr(...args: string[]): boolean
-	hasAttrs(attrs: StrKeyMap): boolean
-	intAttr(name: string, otherwise?: number): number
-	boolAttr(name: string): boolean|undefined
-	isTrueAttr(name: string): boolean
-	isFalseAttr(name: string): boolean
-	floatAttr(name: string, otherwise?: number): number
+	hasAttrs(attrs: StrAttrMap): boolean
 	dateAttr(name: string): Date|undefined
-	intsAttr(name: string, sep?: string, skip?: boolean): number[]|undefined
-	floatsAttr(name: string, sep?: string, skip?: boolean): number[]|undefined
+	domAttrs(uri: string): AttrMap|undefined 
 
 	isError(): boolean
 	parseError(defaultCode: number): [string, number]
@@ -70,9 +67,11 @@ export interface Meta {
 	withPayload(data: string): Meta
 
 	withTag(name: string, value: string, ...rest: string[]): Meta
-	withTags(tags: StrKeyMap): Meta
+	withTags(tags: StrStrMap): Meta
 	withAttr(...args: string[]): Meta
-	withAttrs(attrs: StrKeyMap): Meta
+	withAttrs(attrs: StrAttrMap): Meta
+	withDomAttr(uri: string, ...args: string[]): Meta
+	withDomAttrs(uri: string, attrs: StrAttrMap): Meta
 
 	withSub(name: string, sub: Meta): Meta
 	withSubs(subs: StrMetaMap): Meta
@@ -143,14 +142,15 @@ export class SimpleMeta implements Meta {
 	readonly method?: string
 	readonly ns?: string
 	readonly gid?: string
-	readonly payload?: string 
+	readonly payload?: Attr 
 	readonly tags: StrMap
-	readonly attrs: StrMap
+	readonly attrs: AttrMap
+	readonly doms: DomMap
 	readonly subs: MetaMap
 	readonly rels: MetaMap
 	readonly list: MetaList 
 	constructor(mt: MetaType) {
-		const { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = mt;
+		const { kind, method, ns, gid, payload, tags, attrs, doms, subs, rels, list } = mt;
 		this.kind = kind;
 		method && (this.method = method);
 		ns && (this.ns = ns);
@@ -158,6 +158,7 @@ export class SimpleMeta implements Meta {
 		payload && (this.payload = payload);
 		this.tags = tags || {};
 		this.attrs = attrs || {};
+		this.doms = doms || {};
 		this.subs = subs || {};
 		this.rels = rels || {};
 		this.list = list || [];
@@ -172,7 +173,7 @@ export class SimpleMeta implements Meta {
 	hasTag(...args: string[]) {
 		return hasValue(this.tags, args);
 	}
-	hasTags(ts: StrKeyMap) {
+	hasTags(ts: StrStrMap) {
 		return hasValues(this.tags, ts)
 	}
 	is(kind: string, ns?: string, ...tags: string[]) {
@@ -188,43 +189,20 @@ export class SimpleMeta implements Meta {
 		return hasValues(this.attrs, ts)
 	}
 
-	intAttr(name: string, otherwise?: number) {
-		return toInt(this.attr(name), otherwise);
-	}
-	boolAttr(name: string) {
-		let attr = this.attr(name);
-		return attr ? Truth.get(attr.toLowerCase()) : undefined;
-	}
-	isTrueAttr(name: string) {
-		return this.boolAttr(name) || false;
-	}
-
-	isFalseAttr(name: string) {
-		let key = this.attr(name)?.toLowerCase();
-		return key && Truth.has(key) && Truth.get(key) || false; 
-	}
-	floatAttr(name: string, otherwise?: number) {
-		return toNumber(this.attr(name), otherwise);
-	}
-
 	dateAttr(name: string) {
-			let attr = this.attr(name);
-			if (attr) {
-				let d = new Date(attr);
-				if (d instanceof Date) {
-					return d;
-				}
+		let attr = this.attr(name);
+		if (typeof attr === 'string') {
+			let d = new Date(attr);
+			if (d instanceof Date) {
+				return d;
 			}
+		}
 
 		return undefined;
 	}
 
-	intsAttr(name: string, sep?: string, skip?: boolean) {
-		return splitNumbers(this.attr(name), toInt, sep, skip);
-	}
-
-	floatsAttr(name: string, sep?: string, skip?: boolean) {
-		return splitNumbers(this.attr(name), toNumber, sep, skip);
+	domAttrs(uri: string) {
+		return this.doms[uri];
 	}
 
 	// meta
@@ -233,7 +211,10 @@ export class SimpleMeta implements Meta {
 		return this.kind === ErrorKind;
 	}
 	parseError(defaultCode: number): [string, number] {
-        return [this.attr('message') || '', toInt(this.attr('code'), defaultCode)]
+		let msg = this.attr('message');
+		let code = Number(this.attr('code'));
+		if (isNaN(code)) code = defaultCode;
+		return [msg?.toString() || '', code];
 	}
 
 	isValid() {
@@ -256,7 +237,7 @@ export class SimpleMeta implements Meta {
 		return new SimpleMeta({ ...this, tags: arrayToStrMap(args) });
 	}
 
-	withTags(tags: StrKeyMap) {
+	withTags(tags: StrStrMap) {
 		return new SimpleMeta({ ...this, tags });
 	}
 
@@ -266,6 +247,19 @@ export class SimpleMeta implements Meta {
 
 	withAttrs(attrs: StrMap) {
 		return new SimpleMeta({ ...this, attrs });
+	}
+
+	withDomAttr(uri: string, ...args: string[]) {
+		return new SimpleMeta({
+			...this,
+			doms: setDomMap(this.doms, uri, arrayToStrMap(args)),
+		});
+	}
+	withDomAttrs(uri: string, attrs: StrAttrMap) {
+		return new SimpleMeta({
+			...this,
+			doms: setDomMap(this.doms, uri, attrs), 
+		});
 	}
 
 	sub(name: string): Meta {
@@ -329,7 +323,7 @@ export class SimpleMeta implements Meta {
 }
 
 export function toStrMap(obj: any): StrMap {
-	let ret: StrKeyMap = {};
+	let ret: StrStrMap = {};
 	for (let [k, v] of Object.entries(obj)) {
 		if (typeof v === 'string') {
 			ret[k] = v;
@@ -339,14 +333,14 @@ export function toStrMap(obj: any): StrMap {
 }
 
 export function arrayToStrMap(args: string[]): StrMap {
-	let ret: StrKeyMap = {};
+	let ret: StrStrMap = {};
 	for (let i=1, n=args.length; i < n; i+=2) {
 		ret[args[i-1]] = args[i];
 	}
 	return ret;
 }
 
-function hasValue(vals: StrMap, args: string[]): boolean {
+function hasValue(vals: AttrMap, args: string[]): boolean {
 	let argn = args.length;
 	for (let i=0, n=argn/2; i < n; i++) {
 		let key = args[2*i];
@@ -358,7 +352,7 @@ function hasValue(vals: StrMap, args: string[]): boolean {
 	return argn%2 === 0 || vals[args[argn-1]] !== undefined;
 }
 
-function hasValues(vals: StrMap, ts: StrMap): boolean {
+function hasValues(vals: AttrMap, ts: StrMap): boolean {
 	for(let [key, value] of Object.entries(ts)) {
 		if (vals[key] !== value) {
 			return false;
@@ -367,23 +361,13 @@ function hasValues(vals: StrMap, ts: StrMap): boolean {
 	return true;
 }
 
-function toNumber(s: string|undefined, otherwise?: number): number {
-	let ret = s ? Number(s) : NaN;
-	return (isNaN(ret) && otherwise !== undefined) ? otherwise : ret;
-}
-function toInt(s: string|undefined, otherwise?: number): number {
-	let ret = s ? Number(s) : NaN;
-	if (!isNaN(ret) && s && ret === parseInt(s)) {
-		return ret;
+export function setDomMap(old: DomMap, key: string, val: AttrMap): DomMap {
+	let ret: StrDomMap = {};
+	for (let [k, v] of Object.entries(old)) {
+		ret[k] = v;
 	}
-	return otherwise === undefined ? NaN : Math.floor(otherwise);
-}
-function splitNumbers(s: string|undefined, fn: ((s: string) => number), sep?: string, skip?: boolean): number[]|undefined {
-	if (!s) return skip ? [] : undefined;
-
-	let words = s.split(sep || ',');
-	let ret = words.map(w => fn(w)).filter(n => !isNaN(n));
-	return skip || words.length === ret.length ? ret : undefined;
+	ret[key] = val;
+	return ret;
 }
 
 export const Nil: Meta = new SimpleMeta({kind: ''});
@@ -391,7 +375,7 @@ export const Nil: Meta = new SimpleMeta({kind: ''});
 export interface Visitor {
 	beginMeta(m: Meta, kind: string, method?: string, ns?: string, gid?: string): void;
 	onTag(m: Meta, name: string, value: string): void
-	onAttr(m: Meta, name: string, value: string): void
+	onAttr(m: Meta, name: string, value: Attr): void
 	onSub(m: Meta, name: string, sub: Meta): void
 	onRel(m: Meta, name: string, rel: Meta): void
 	onListItem(m: Meta, index: number, item: Meta): void
@@ -414,7 +398,7 @@ export function first(ms: MetaList): Meta {
 	return ms[0] || Nil;
 }
 
-export function firstAttr(ms: MetaList, name: string): string|undefined {
+export function firstAttr(ms: MetaList, name: string): Attr|undefined {
 	return first(ms).attr(name)
 }
 
