@@ -19,6 +19,15 @@ export interface Mpi {
 	ctrl(method: string, meta?: Meta, ctx?: MetaMap): Promise<Meta>
 }
 
+export const NilMpi = {
+	async call(method: string, meta: Meta, ctx?: MetaMap) {
+		return Nil;
+	},
+	async ctrl(method: string, meta?: Meta, ctx?: MetaMap) {
+		return Nil;
+	},
+}
+
 export type MetaType = {
 	kind: string
 	method?: string
@@ -115,22 +124,22 @@ export function toMeta(obj: any): Meta {
 	let { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = obj;
 	return new SimpleMeta({
 		kind, method, ns, gid, payload,
-		tags: toStrMap(tags),
-		attrs: toStrMap(attrs),
-		subs: toMetaMap(subs),
-		rels: toMetaMap(rels),
-		list: toMetaList(list),
+		tags: tags ? toStrMap(tags) : undefined,
+		attrs: attrs ? toStrMap(attrs) : undefined,
+		subs: subs ? toMetaMap(subs) : undefined,
+		rels: rels ? toMetaMap(rels) : undefined,
+		list: list ? toMetaList(list) : undefined,
 	});
 }
 
-export function toMetaMap(obj: any): MetaMap|undefined {
-	if (obj === undefined) return undefined;
-
-	let ret: StrMetaMap = {};
-	for (let key in Object.keys(obj)) {
-		ret[key] = toMeta(obj[key]) 
+export function toMetaMap(obj: unknown): MetaMap|undefined {
+	if (obj && typeof obj === 'object') {
+		let ret: StrMetaMap = {};
+		for (let [k, v] of Object.entries(obj)) {
+			ret[k] = toMeta(v);
+		}
+		return ret;
 	}
-	return ret; 
 } 
 
 export function toMetaList(obj: any): MetaList {

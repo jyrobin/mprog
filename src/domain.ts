@@ -202,11 +202,16 @@ export class DomainImpl implements Domain {
 		}
 
 		let actor = this.indexer().actorWithMethod(meta.kind, method);
-		if (actor) {
-			let ret = actor.process(meta, ctx);
-			return ret === undefined ? Nil : ret;
+		if (!actor) {
+			return newError(`${meta.kind}.${method} not found`)
 		}
-		return newError(`Actor ${method} for ${meta.kind} not found`)
+
+		try {
+			let ret = await actor.process(meta, ctx);
+			return ret === undefined ? Nil : ret;
+		} catch(err) {
+			return newError(`ERROR ${meta.kind}.${method}: ${err}`)
+		}
 	}
 
 	async ctrl(method: string, meta: Meta = Nil, ctx?: MetaMap) {
@@ -218,11 +223,16 @@ export class DomainImpl implements Domain {
 
 		let kind = meta.kind;
 		let actor = this.indexer().actorWithCtrl(method, kind);
-		if (actor) {
-			let ret = actor.process(meta, ctx);
-			return ret === undefined ? Nil : ret;
+		if (!actor) {
+			return newError(`${meta.kind}.${method} not found`)
 		}
-		return newError(`Control ${method}` + (kind?` for ${kind}`:'') + ' not found');
+
+		try {
+			let ret = await actor.process(meta, ctx);
+			return ret === undefined ? Nil : ret;
+		} catch(err) {
+			return newError(`ERROR ${meta.kind}.${method}: ${err}`)
+		}
 	}
 
 	list(m: Meta, ctx?: MetaMap) {

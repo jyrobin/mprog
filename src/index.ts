@@ -1,6 +1,6 @@
 
 export {
-	MetaType, Meta, MetaMap, MetaList, Nil, Mpi,
+	MetaType, Meta, MetaMap, MetaList, Nil, Mpi, NilMpi,
 	parseMeta, toMeta, toMetaMap, toMetaList,
 	newMeta, simpleMeta
 } from './meta';
