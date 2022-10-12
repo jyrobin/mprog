@@ -20,6 +20,7 @@ export type DomainType = {
 }
 
 // although an interface, a domain actually implements things
+// - so probably better not to use it to qualify things
 
 export interface Domain extends Mpi {
 	readonly parent?: Domain
@@ -253,3 +254,4 @@ export class DomainImpl implements Domain {
 		return this.idxer || (this.idxer = simpleIndexer(this));
 	}
 }
+

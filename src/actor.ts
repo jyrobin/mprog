@@ -34,3 +34,48 @@ export function simpleCreator(kind: string, fn: Processor, ...tags: string[]): A
 export function simpleMaker(kind: string, fn: Processor, ...tags: string[]): Actor {
 	return simpleActor(kind, "make", fn, ...tags)
 }
+
+export function kindActorList(kind: string, actor: any, prefix: string = 'mpi_', ...extraNames: string[]): Actor[] {
+  const props: string[] = [];
+  let obj = actor;
+  do {
+      props.push(...Object.getOwnPropertyNames(obj));
+  } while (obj = Object.getPrototypeOf(obj));
+
+  let actors: Actor[] = [];
+  props.forEach(name => {
+    if (typeof actor[name] === 'function' && name.startsWith(prefix)) {
+      let fn = actor[name].bind(actor);
+      actors.push(simpleActor(kind, name.slice(prefix.length), fn));
+    }
+  });
+
+  extraNames.forEach(name => {
+    if (typeof actor[name] === 'function') {
+      let fn = actor[name].bind(actor);
+      actors.push(simpleActor(kind, name, fn));
+    }
+  });
+
+  return actors;
+}
+
+export function extractActorList(actor: any, prefix: string = 'mpi_'): Actor[] {
+  const props: string[] = [];
+  let obj = actor;
+  do {
+      props.push(...Object.getOwnPropertyNames(obj));
+  } while (obj = Object.getPrototypeOf(obj));
+
+  let actors: Actor[] = [];
+  props.forEach(name => {
+    if (typeof actor[name] === 'function' && name.startsWith(prefix)) {
+      let pair = name.slice(prefix.length).split('_');
+	  if (pair.length === 2) {
+		let fn = actor[name].bind(actor);
+		actors.push(simpleActor(pair[0], pair[1], fn));
+	  }
+    }
+  });
+  return actors;
+}

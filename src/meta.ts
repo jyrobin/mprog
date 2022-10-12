@@ -4,6 +4,9 @@ export const ErrorKind = 'Error';
 export type Attr = string | number | boolean | null |
 	Readonly<string[]> | Readonly<number[]> | Readonly<boolean[]>;
 
+export type Json = string | number | boolean | null |
+	Json[] | { [key: string]: Json };
+
 export type StrStrMap = { [key: string]: string }
 export type StrAttrMap = { [key: string]: Attr }
 export type StrDomMap = { [key: string]: StrAttrMap } // key is domain URI
@@ -77,7 +80,7 @@ export interface Meta {
 
 	withTag(name: string, value: string, ...rest: string[]): Meta
 	withTags(tags: StrStrMap): Meta
-	withAttr(...args: string[]): Meta
+	withAttr(...args: (string|null|undefined)[]): Meta
 	withAttrs(attrs: StrAttrMap): Meta
 	withDomAttr(uri: string, ...args: string[]): Meta
 	withDomAttrs(uri: string, attrs: StrAttrMap): Meta
@@ -106,7 +109,7 @@ export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
 		kind, method, tags: arrayToStrMap(tags),
 	});
 }
-export function newMeta(mt: MetaType, ...attrs: string[]): Meta {
+export function newMeta(mt: MetaType, ...attrs: (string|null|undefined)[]): Meta {
 	let ret = new SimpleMeta(mt);
 	return attrs.length > 0 ? ret.withAttr(...attrs) : ret;
 }
@@ -227,7 +230,7 @@ export class SimpleMeta implements Meta {
 	}
 
 	isValid() {
-		return !!this.kind && this.kind !== ErrorKind;
+		return !this.isNil() && !this.isError();
 	}
 
 	withMethod(method: string): Meta {
@@ -250,7 +253,7 @@ export class SimpleMeta implements Meta {
 		return new SimpleMeta({ ...this, tags });
 	}
 
-	withAttr(...args: string[]) {
+	withAttr(...args: (string|undefined|null)[]) {
 		return new SimpleMeta({ ...this, attrs: arrayToStrMap(args) });
 	}
 
@@ -341,10 +344,14 @@ export function toStrMap(obj: any): StrMap {
 	return ret;
 }
 
-export function arrayToStrMap(args: string[]): StrMap {
+export function arrayToStrMap(args: (string|undefined|null)[]): StrMap {
 	let ret: StrStrMap = {};
 	for (let i=1, n=args.length; i < n; i+=2) {
-		ret[args[i-1]] = args[i];
+		let k = args[i-1];
+		let v = args[i];
+		if (k != null && v != null) {
+			ret[k] = v;
+		}
 	}
 	return ret;
 }
@@ -403,15 +410,25 @@ function walk(m: Meta, v: Visitor) {
 
 // utils
 
-export function first(ms: MetaList): Meta {
+export function firstMeta(ms: MetaList | Meta[]): Meta {
 	return ms[0] || Nil;
 }
 
 export function firstAttr(ms: MetaList, name: string): Attr|undefined {
-	return first(ms).attr(name)
+	return firstMeta(ms).attr(name)
 }
 
 export function firstIs(ms: MetaList, kind: string, ns: string, ...tags: string[]): Meta {
-	let ret = first(ms)
+	let ret = firstMeta(ms)
 	return !ret.isNil() && ret.is(kind, ns, ...tags) ? ret : Nil;
+}
+
+export function expandPayload(m: Meta): any {
+	let s = m.payload;
+	if (typeof s === 'string') {
+		try {
+			return { ...m, payload: JSON.parse(s) };
+		} catch {}
+	}
+	return m;
 }
