@@ -19,11 +19,13 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./meta": "./dist/meta.js"
+    "./meta": "./dist/meta.js",
+    "./node": "./dist/node/index.js"
   },
   "typesVersions": {
     "*": {
-      "meta": ["dist/meta"]
+      "meta": ["dist/meta"],
+      "node": ["dist/node"]
     }
   }
 }

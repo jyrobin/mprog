@@ -1,3 +1,4 @@
+import exp from "constants";
 
 export const ErrorKind = 'Error';
 
@@ -6,6 +7,8 @@ export type Attr = string | number | boolean | null |
 
 export type Json = string | number | boolean | null |
 	Json[] | { [key: string]: Json };
+export type JsonMap = { [key: string]: Json };
+export type AnyMap = { [key: string]: any };
 
 export type StrStrMap = { [key: string]: string }
 export type StrAttrMap = { [key: string]: Attr }
@@ -53,6 +56,7 @@ export interface Meta {
 	readonly payload?: Attr
 	readonly tags: StrMap
 	readonly attrs: AttrMap
+	readonly doms: DomMap
 	readonly subs: MetaMap
 	readonly rels: MetaMap
 	readonly list: MetaList
@@ -78,12 +82,17 @@ export interface Meta {
 	withGid(gid: string): Meta
 	withPayload(data: string): Meta
 
+	setTag(name: string, value: string, ...rest: string[]): Meta
 	withTag(name: string, value: string, ...rest: string[]): Meta
+	setTags(tags: StrStrMap): Meta
 	withTags(tags: StrStrMap): Meta
+	setAttr(...args: (string|null|undefined)[]): Meta
 	withAttr(...args: (string|null|undefined)[]): Meta
+	setAttrs(attrs: StrAttrMap): Meta
 	withAttrs(attrs: StrAttrMap): Meta
-	withDomAttr(uri: string, ...args: string[]): Meta
-	withDomAttrs(uri: string, attrs: StrAttrMap): Meta
+
+	setDomAttr(uri: string, ...args: string[]): Meta
+	setDomAttrs(uri: string, attrs: StrAttrMap): Meta
 
 	withSub(name: string, sub: Meta): Meta
 	withSubs(subs: StrMetaMap): Meta
@@ -95,13 +104,15 @@ export interface Meta {
 	hasRel(name: string): boolean
 	rel(name: string): Meta
 
-	withList(list: Meta[], trims?: boolean): Meta
+	setList(list: Meta[], trims?: boolean): Meta
 
 	generalizes(m: Meta): boolean
 	specializes(m: Meta): boolean
 
 	walk(v: Visitor): void
 	json(...opts: string[]): string
+
+	object(expandPayload?: boolean): AnyMap
 }
 
 export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
@@ -124,11 +135,12 @@ export function parseMeta(str: string): Meta {
 } 
 
 export function toMeta(obj: any): Meta {
-	let { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = obj;
+	let { kind, method, ns, gid, payload, tags, attrs, doms, subs, rels, list } = obj;
 	return new SimpleMeta({
 		kind, method, ns, gid, payload,
 		tags: tags ? toStrMap(tags) : undefined,
 		attrs: attrs ? toStrMap(attrs) : undefined,
+		doms: doms ? toDomMap(doms) : undefined, 
 		subs: subs ? toMetaMap(subs) : undefined,
 		rels: rels ? toMetaMap(rels) : undefined,
 		list: list ? toMetaList(list) : undefined,
@@ -245,29 +257,53 @@ export class SimpleMeta implements Meta {
 		return new SimpleMeta({ ...this, payload });
 	}
 
-	withTag(...args: string[]) {
-		return new SimpleMeta({ ...this, tags: arrayToStrMap(args) });
+	setTag(...args: string[]) {
+		let tags = arrayToStrMap(args);
+		return new SimpleMeta({ ...this, tags });
 	}
+	withTag(...args: string[]) {
+		if (args.length === 0) return this;
 
-	withTags(tags: StrStrMap) {
+		let tags = { ...this.tags, ...arrayToStrMap(args) };
+		return new SimpleMeta({ ...this, tags });
+	}
+	setTags(tags: StrStrMap) {
+		return new SimpleMeta({ ...this, tags });
+	}
+	withTags(tagMap: StrStrMap) {
+		if (isEmpty(tagMap)) return this;
+
+		let tags = { ...this.tags, ...tagMap };
 		return new SimpleMeta({ ...this, tags });
 	}
 
-	withAttr(...args: (string|undefined|null)[]) {
-		return new SimpleMeta({ ...this, attrs: arrayToStrMap(args) });
+	setAttr(...args: (string|undefined|null)[]) {
+		let attrs = arrayToStrMap(args);
+		return new SimpleMeta({ ...this, attrs });
 	}
+	withAttr(...args: (string|undefined|null)[]) {
+		if (args.length === 0) return this;
 
-	withAttrs(attrs: StrMap) {
+		let attrs = { ...this.attrs, ...arrayToStrMap(args) };
+		return new SimpleMeta({ ...this, attrs });
+	}
+	setAttrs(attrs: StrMap) {
+		return new SimpleMeta({ ...this, attrs });
+	}
+	withAttrs(attrMap: StrMap) {
+		if (isEmpty(attrMap)) return this;
+
+		let attrs = { ...this.attrs, ...attrMap };
 		return new SimpleMeta({ ...this, attrs });
 	}
 
-	withDomAttr(uri: string, ...args: string[]) {
+	setDomAttr(uri: string, ...args: string[]) {
 		return new SimpleMeta({
 			...this,
 			doms: setDomMap(this.doms, uri, arrayToStrMap(args)),
 		});
 	}
-	withDomAttrs(uri: string, attrs: StrAttrMap) {
+	setDomAttrs(uri: string, attrs: StrAttrMap) {
 		return new SimpleMeta({
 			...this,
 			doms: setDomMap(this.doms, uri, attrs), 
@@ -281,11 +317,14 @@ export class SimpleMeta implements Meta {
 		return !!this.subs[name];
 	}
 	withSub(name: string, sub: Meta) {
-		return new SimpleMeta({ ...this, subs: this.subs });
-	}
-	withSubs(subs: MetaMap) {
+		let subs = { ...this.subs, [name]: sub };
 		return new SimpleMeta({ ...this, subs });
 	}
+	withSubs(subMap: MetaMap) {
+		let subs = { ...this.subs, ...subMap };
+		return new SimpleMeta({ ...this, subs });
+	}
+
 	rel(name: string): Meta {
 		return this.rels[name] || Nil;
 	}
@@ -293,13 +332,15 @@ export class SimpleMeta implements Meta {
 		return !!this.rels[name];
 	}
 	withRel(name: string, rel: Meta) {
-		return new SimpleMeta({ ...this, subs: this.rels });
+		let rels = { ...this.rels, [name]: rel };
+		return new SimpleMeta({ ...this, rels });
 	}
-	withRels(rels: MetaMap) {
+	withRels(relMap: MetaMap) {
+		let rels = { ...this.rels, ...relMap };
 		return new SimpleMeta({ ...this, rels });
 	}
 
-	withList(list: Meta[], trims?: boolean) {
+	setList(list: Meta[], trims?: boolean) {
 		list = !trims ? list : list.filter(m => !m.isNil());
 		return new SimpleMeta({ ...this, list });
 	}
@@ -327,6 +368,10 @@ export class SimpleMeta implements Meta {
 		return JSON.stringify(this, null, opts[0]);
 	}
 
+	object(expandPayload?: boolean): AnyMap {
+		return toJson(this, expandPayload);
+	}
+
 	// traverse
 
 	walk(v: Visitor) {
@@ -339,6 +384,16 @@ export function toStrMap(obj: any): StrMap {
 	for (let [k, v] of Object.entries(obj)) {
 		if (typeof v === 'string') {
 			ret[k] = v;
+		}
+	}
+	return ret;
+}
+
+export function toDomMap(obj: any): DomMap {
+	let ret: StrDomMap = {};
+	for (let [k, v] of Object.entries(obj)) {
+		if (v && typeof v === 'object' && !Array.isArray(v)) {
+			ret[k] = toStrMap(v);
 		}
 	}
 	return ret;
@@ -423,12 +478,43 @@ export function firstIs(ms: MetaList, kind: string, ns: string, ...tags: string[
 	return !ret.isNil() && ret.is(kind, ns, ...tags) ? ret : Nil;
 }
 
-export function expandPayload(m: Meta): any {
-	let s = m.payload;
-	if (typeof s === 'string') {
-		try {
-			return { ...m, payload: JSON.parse(s) };
-		} catch {}
+function isEmpty(val: unknown): boolean {
+	if (Array.isArray(val)) {
+		return val.length === 0;
+	} else if (val && typeof val === 'object') {
+		return Object.keys(val).length === 0;
+	} else {
+		return !val;
 	}
-	return m;
+}
+
+// partially cloned only, for readonly use 
+export function toJson(m: Meta, expandPayload?: boolean): JsonMap {
+	let ret: Json = { kind: m.kind };
+	if (m.method) ret.method = m.method; 
+	if (m.ns) ret.ns = m.ns; 
+	if (m.gid) ret.gid = m.gid; 
+
+	if (m.payload !== undefined) {
+		let pl = m.payload;
+		if (expandPayload && typeof pl === 'string') {
+			ret.payload = JSON.parse(pl) as Json;
+		} else {
+			ret.payload = m.payload as Json;
+		}
+	}
+
+	isEmpty(m.tags) || (ret.tags = m.tags as Json);
+	isEmpty(m.attrs) || (ret.attrs = m.attrs as Json);
+	isEmpty(m.doms) || (ret.doms = m.doms as Json); 
+	isEmpty(m.subs) || (ret.subs = toJsonMap(m.subs, expandPayload));
+	isEmpty(m.rels) || (ret.subs = toJsonMap(m.rels, expandPayload)); 
+	isEmpty(m.list) || (ret.list = m.list.map(it => toJson(it, expandPayload)));
+	return ret;
+}
+
+export function toJsonMap(mmap: { [key: string]: Meta }, expandPayload?: boolean): JsonMap {
+	return Object.fromEntries(
+		Object.entries(mmap).map(([k, m]) => [k, toJson(m, expandPayload)])
+	);
 }
