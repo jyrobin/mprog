@@ -9,9 +9,11 @@
     "build": "tsc --build"
   },
   "dependencies": {
+    "express": "latest",
     "immutable": "latest"
   },
   "devDependencies": {
+    "@types/express": "latest",
     "@types/node": "latest",
     "typescript": "latest"
   },
@@ -19,13 +21,13 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./meta": "./dist/meta.js",
     "./node": "./dist/node/index.js"
   },
   "typesVersions": {
     "*": {
-      "meta": ["dist/meta"],
-      "node": ["dist/node"]
+      "node": [
+        "dist/node"
+      ]
     }
   }
 }
