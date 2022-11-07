@@ -1,4 +1,6 @@
 import { Map, List } from 'immutable';
+import { allPropertyNames } from '@jyrobin/jslib';
+
 import { Meta, MetaMap, simpleMeta } from './meta';
 
 export interface Actor {
@@ -15,45 +17,59 @@ export function newActorList(...actors: Actor[]): ActorList {
 }
 
 export type Processor = (m: Meta, ctx?: MetaMap) => Promise<Meta>;
+export type Middleware = (m: Meta, ctx?: MetaMap) => Promise<[Meta, MetaMap?]>;
 
-export function simpleActor(kind: string, method: string, fn: Processor, ...tags: string[]): Actor {
+function preFn(fn: Processor, pre: Middleware): Processor {
+    return async (m: Meta, ctx?: MetaMap) => {
+        [m, ctx] = await pre(m, ctx);
+        return fn(m, ctx);
+    };
+}
+
+export function simpleActor(kind: string, method: string, fn: Processor, pre?: Middleware, ...tags: string[]): Actor {
     return {
         meta: simpleMeta('Actor', method, 'target', kind, ...tags),
-        process: fn,
+        process: pre? preFn(fn, pre) : fn,
     }
 }
-export function simpleLister(kind: string, fn: Processor, ...tags: string[]): Actor {
-    return simpleActor(kind, "list", fn, ...tags)
+export function simpleLister(kind: string, fn: Processor, pre?: Middleware, ...tags: string[]): Actor {
+    return simpleActor(kind, "list", fn, pre, ...tags)
 }
-export function simpleFinder(kind: string, fn: Processor, ...tags: string[]): Actor {
-    return simpleActor(kind, "find", fn, ...tags)
+export function simpleFinder(kind: string, fn: Processor, pre?: Middleware, ...tags: string[]): Actor {
+    return simpleActor(kind, "find", fn, pre, ...tags)
 }
-export function simpleCreator(kind: string, fn: Processor, ...tags: string[]): Actor {
-    return simpleActor(kind, "create", fn, ...tags)
+export function simpleCreator(kind: string, fn: Processor, pre?: Middleware, ...tags: string[]): Actor {
+    return simpleActor(kind, "create", fn, pre, ...tags)
 }
-export function simpleMaker(kind: string, fn: Processor, ...tags: string[]): Actor {
-    return simpleActor(kind, "make", fn, ...tags)
+export function simpleMaker(kind: string, fn: Processor, pre?: Middleware, ...tags: string[]): Actor {
+    return simpleActor(kind, "make", fn, pre, ...tags)
 }
 
-export function kindActorList(kind: string, actor: any, prefix: string = 'mpi_', ...extraNames: string[]): Actor[] {
-    const props: string[] = [];
-    let obj = actor;
-    do {
-        props.push(...Object.getOwnPropertyNames(obj));
-    } while (obj = Object.getPrototypeOf(obj));
+export function kindActorList(kind: string, actor: any,
+    opts?: { prefix?: string, methodNames?: string[], pre?: Middleware }
+): Actor[] {
+    let { prefix='', methodNames=[], pre } = opts || {};
+
+    if (methodNames.length === 0 && !prefix) {
+        prefix = "mpi_";
+    }
 
     let actors: Actor[] = [];
-    props.forEach(name => {
-        if (typeof actor[name] === 'function' && name.startsWith(prefix)) {
-            let fn = actor[name].bind(actor);
-            actors.push(simpleActor(kind, name.slice(prefix.length), fn));
-        }
-    });
 
-    extraNames.forEach(name => {
+    const props = allPropertyNames(actor);
+    if (prefix) {
+        props.forEach(name => {
+            if (typeof actor[name] === 'function' && name.startsWith(prefix)) {
+                let fn = actor[name].bind(actor);
+                actors.push(simpleActor(kind, name.slice(prefix.length), fn, pre));
+            }
+        });
+    }
+
+    methodNames.forEach(name => {
         if (typeof actor[name] === 'function') {
             let fn = actor[name].bind(actor);
-            actors.push(simpleActor(kind, name, fn));
+            actors.push(simpleActor(kind, name, fn, pre));
         }
     });
 

@@ -78,8 +78,8 @@ export interface Meta {
     hasAttrs(attrs: StrAttrMap): boolean
     numAttr(name: string, numberOnly?: boolean): number
     intAttr(name: string, intOnly?: boolean): number
-    strAttr(name: string, stringOnly?: boolean): string|undefined
-    strAttr(name: string, otherwise: string): string
+    strAttr(name: string, stringOnly: boolean): string|undefined
+    strAttr(name: string, otherwise?: string): string
     boolAttr(name: string, otherwise?: boolean): boolean
     dateAttr(name: string): Date | undefined
     domAttrs(uri: string): AttrMap | undefined
@@ -96,8 +96,8 @@ export interface Meta {
     withTag(name: string, value: string, ...rest: string[]): Meta
     setTags(tags: StrStrMap): Meta
     withTags(tags: StrStrMap): Meta
-    setAttr(...args: (string | null | undefined)[]): Meta
-    withAttr(...args: (string | null | undefined)[]): Meta
+    setAttr(...args: (Attr|undefined)[]): Meta
+    withAttr(...args: (Attr|undefined)[]): Meta
     setAttrs(attrs: StrAttrMap): Meta
     withAttrs(attrs: StrAttrMap): Meta
 
@@ -120,9 +120,10 @@ export interface Meta {
     specializes(m: Meta): boolean
 
     walk(v: Visitor): void
-    json(...opts: string[]): string
 
+    json(...opts: string[]): string
     object(expandPayload?: boolean): AnyMap
+    toJSON(): AnyMap
 }
 
 export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
@@ -234,16 +235,16 @@ export class SimpleMeta implements Meta {
         let ret = Math.floor(num);
         return numOnly && ret !== num ? NaN : ret;
     }
-    strAttr(name: string, stringOnly?: boolean): string | undefined;
-    strAttr(name: string, otherwise: string): string;
+    strAttr(name: string, otherwise?: string): string;
+    strAttr(name: string, stringOnly: boolean): string | undefined;
     strAttr(name: string, opt?: boolean|string): string | undefined{
         let attr = this.attr(name);
         if (typeof attr === 'string') return attr;
 
-        if (opt === undefined || typeof opt === 'boolean') { // string only
+        if (typeof opt === 'boolean') { // string only
             return opt ? undefined : attr?.toString();
-        } else { // otherwise
-            return typeof attr === 'string' ? attr : opt;
+        } else {
+            return opt || '';
         }
     }
 
@@ -322,20 +323,20 @@ export class SimpleMeta implements Meta {
         return new SimpleMeta({ ...this, tags });
     }
 
-    setAttr(...args: (string | undefined | null)[]) {
-        let attrs = arrayToStrMap(args);
+    setAttr(...args: (Attr | undefined)[]) {
+        let attrs = arrayToAttrMap(args);
         return new SimpleMeta({ ...this, attrs });
     }
-    withAttr(...args: (string | undefined | null)[]) {
+    withAttr(...args: (Attr | undefined)[]) {
         if (args.length === 0) return this;
 
-        let attrs = { ...this.attrs, ...arrayToStrMap(args) };
+        let attrs = { ...this.attrs, ...arrayToAttrMap(args) };
         return new SimpleMeta({ ...this, attrs });
     }
-    setAttrs(attrs: StrMap) {
+    setAttrs(attrs: StrAttrMap) {
         return new SimpleMeta({ ...this, attrs });
     }
-    withAttrs(attrMap: StrMap) {
+    withAttrs(attrMap: StrAttrMap) {
         if (isEmpty(attrMap)) return this;
 
         let attrs = { ...this.attrs, ...attrMap };
@@ -410,11 +411,15 @@ export class SimpleMeta implements Meta {
     }
 
     json(...opts: string[]): string {
-        return JSON.stringify(this, null, opts[0]);
+        return JSON.stringify(this.object(), null, opts[0]);
     }
 
     object(expandPayload?: boolean): AnyMap {
         return toJson(this, expandPayload);
+    }
+
+    toJSON() {
+        return this.object(false)
     }
 
     // traverse
@@ -455,6 +460,19 @@ export function arrayToStrMap(args: (string | undefined | null)[]): StrMap {
     }
     return ret;
 }
+
+export function arrayToAttrMap(args: (Attr|undefined)[]): StrAttrMap {
+    let ret: StrAttrMap = {};
+    for (let i = 1, n = args.length; i < n; i += 2) {
+        let k = args[i - 1];
+        let v = args[i];
+        if (typeof k === 'string' && v !== undefined) {
+            ret[k] = v;
+        }
+    }
+    return ret;
+}
+
 
 function hasValue(vals: AttrMap, args: string[]): boolean {
     let argn = args.length;

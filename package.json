@@ -9,6 +9,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
+    "@jyrobin/jslib": "^0.1.0",
     "express": "latest",
     "immutable": "latest"
   },

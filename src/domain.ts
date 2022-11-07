@@ -211,7 +211,7 @@ export class DomainImpl implements Domain {
             let ret = await actor.process(meta, ctx);
             return ret === undefined ? Nil : ret;
         } catch(err) {
-            return newError(`ERROR ${meta.kind}.${method}: ${err}`);
+            return newError(`[${meta.kind}.${method}] ${err}`);
         }
     }
 
@@ -232,7 +232,7 @@ export class DomainImpl implements Domain {
             let ret = await actor.process(meta, ctx);
             return ret === undefined ? Nil : ret;
         } catch(err) {
-            return newError(`ERROR ${meta.kind}.${method}: ${err}`);
+            return newError(`[${meta.kind}.${method}] ${err}`);
         }
     }
 
