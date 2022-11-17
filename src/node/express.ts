@@ -8,9 +8,7 @@ export function newMpiHandler(mpi: Mpi) {
 
         // TODO: try and 500
         let { method, meta, ctx } = body;
-        console.log("BBBBBBBBBBBBBBB", body, mpi);
         let ret = await mpi.call(method, toMeta(meta), toMetaMap(ctx));
-        console.log("BBBBBBBBBBBBBBB RET", ret);
         if (ret.isError()) {
             res.status(400).json(ret);
         } else {

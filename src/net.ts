@@ -6,7 +6,7 @@ export class RemoteMpi implements Mpi {
     protected uri: string;
     protected fetch: any;
 
-    constructor(uri: string, fetch: any) {
+    constructor(uri: string, fetch?: any) {
         this.uri = uri;
         this.fetch = fetch || (window !== undefined && window.fetch);
     }
@@ -28,6 +28,7 @@ export function callMpi(fetch: any, uri: string, method: string, meta: Meta, ctx
 type MpiHttpMethod = 'POST' | 'PATCH';
 async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: string, meta: Meta, ctx?: MetaMap): Promise<Meta> {
     fetch = fetch || (window !== undefined && window.fetch);
+
     let res = await fetch(uri, {
         method: hm,
         headers: {

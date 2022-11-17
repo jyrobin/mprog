@@ -11,7 +11,6 @@ export function newDomainList(...domains: Domain[]): DomainList {
 
 export type DomainType = {
     uri?: string
-    //parent?: Domain
     meta?: Meta
     actors?: ActorList
     ctrls?: ActorList
@@ -23,7 +22,6 @@ export type DomainType = {
 // - so probably better not to use it to qualify things
 
 export interface Domain extends Mpi {
-    //readonly parent?: Domain
     readonly uri: string
     readonly meta: Meta
     readonly actors: ActorList
@@ -40,8 +38,8 @@ export interface Indexer {
     ctrlActors: ActorMap
     actorWithGid(gid: string): Actor|undefined
     actorsWithKind(kind: string): ActorList|undefined
-    actorWithMethod(kind: string, method: string): Actor|undefined
-    actorWithCtrl(method: string, kind?: string): Actor|undefined
+    actorWithMethod(kind: string, method: string, cat?: string): Actor|undefined
+    actorWithCtrl(method: string, kind?: string, cat?: string): Actor|undefined
 }
 
 export class IndexerRecord extends Record({
@@ -56,10 +54,12 @@ export class IndexerRecord extends Record({
     actorsWithKind(kind: string) {
         return this.kindActorLists.get(kind);
     }
-    actorWithMethod(kind: string, method: string) {
+    actorWithMethod(kind: string, method: string, cat?: string) {
+        kind = cat ? kind + '[' + cat + ']' : kind;
         return this.methodActors.get(kind+'.'+method);
     }
-    actorWithCtrl(method: string, kind?: string) {
+    actorWithCtrl(method: string, kind?: string, cat?: string) { // no kind no cat
+        kind = kind && cat ? kind + '[' + cat + ']' : kind; 
         return this.ctrlActors.get(kind ? kind+'.'+method : method);
     }
 }
@@ -86,7 +86,14 @@ export function simpleIndexer(dom: Domain): Indexer {
                 }
             }
         }
+
         if (kind) {
+            // TODO: a hack, special 'cat' tag to further classify kind for now
+            let cat = am.tag('cat') || am.rel('target').tag('cat');
+            if (cat) {
+                kind = kind + '[' + cat.trim() + ']';
+            }
+
             let lst = kmap.get(kind);
             if (lst) {
                 kmap = kmap.set(kind, lst.push(actor));
@@ -95,7 +102,7 @@ export function simpleIndexer(dom: Domain): Indexer {
             }
 
             if (am.method) {
-                let key = kind + '.' + am.method;
+                let key = kind + '.' + am.method.trim();
                 if (!mmap.has(key)) {
                     mmap = mmap.set(key, actor);
                 }
@@ -164,14 +171,12 @@ export function newDomain(dt: DomainType): Domain {
 export class DomainImpl implements Domain {
     readonly meta: Meta;
     readonly uri: string;
-    //readonly parent: Domain|undefined
     readonly actors: ActorList;
     readonly subs: DomainList;
     readonly ctrls: ActorList;
     readonly closer?: () => Promise<void>;
     private idxer: Indexer|undefined;
     constructor({ uri, meta, actors, subs, ctrls, closer }: DomainType) {
-        //this.parent = parent;
         this.uri = uri || '';
         this.meta = meta || Nil;
         this.actors = actors || List<Actor>();
@@ -179,14 +184,6 @@ export class DomainImpl implements Domain {
         this.ctrls = ctrls || List<Actor>();
         this.closer = closer;
     }
-
-    /*root(): Domain {
-        let root: Domain = this;
-        while (root.parent) {
-            root = root.parent;
-        }
-        return root
-    }*/
 
     sub(name: string) {
         for (let sub of this.subs) {
@@ -202,7 +199,8 @@ export class DomainImpl implements Domain {
             return newError(`Calling ${method} with nil meta`);
         }
 
-        let actor = this.indexer().actorWithMethod(meta.kind, method);
+        let cat = meta.tag('cat');
+        let actor = this.indexer().actorWithMethod(meta.kind, method, cat);
         if (!actor) {
             return newError(`${meta.kind}.${method} not found`)
         }
@@ -223,7 +221,8 @@ export class DomainImpl implements Domain {
         }
 
         let kind = meta.kind;
-        let actor = this.indexer().actorWithCtrl(method, kind);
+        let cat = meta.tag('cat');
+        let actor = this.indexer().actorWithCtrl(method, kind, cat);
         if (!actor) {
             return newError(`${meta.kind}.${method} not found`)
         }

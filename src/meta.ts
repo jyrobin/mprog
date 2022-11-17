@@ -1,4 +1,3 @@
-import exp from "constants";
 
 export const ErrorKind = 'Error';
 
@@ -7,8 +6,7 @@ export const TRUTH: Readonly<{ [key: string]: boolean }> = {
     '0': false, 'false': false, 'no': false, 'off': false,
 }
 
-export type Attr = string | number | boolean | null |
-    Readonly<string[]> | Readonly<number[]> | Readonly<boolean[]>;
+export type Attr = string | number | boolean | null | Readonly<string[]>;
 
 export type Json = string | number | boolean | null |
     Json[] | { [key: string]: Json };
@@ -25,6 +23,7 @@ export type DomMap = Readonly<{ [key: string]: AttrMap }>
 export type MetaMap = Readonly<StrMetaMap>
 export type MetaList = Readonly<Meta[]>
 
+// TODO: if needed, ctx may have root or parent domain
 export interface Mpi {
     call(method: string, meta: Meta, ctx?: MetaMap): Promise<Meta>
     ctrl(method: string, meta?: Meta, ctx?: MetaMap): Promise<Meta>
@@ -88,6 +87,7 @@ export interface Meta {
     parseError(defaultCode: number): [string, number]
     isValid(): boolean
 
+    withKind(kind: string): Meta
     withMethod(mthd: string): Meta
     withGid(gid: string): Meta
     withPayload(data: string): Meta
@@ -146,7 +146,7 @@ export function toMeta(obj: any): Meta {
     return new SimpleMeta({
         kind, method, ns, gid, payload,
         tags: tags ? toStrMap(tags) : undefined,
-        attrs: attrs ? toStrMap(attrs) : undefined,
+        attrs: attrs ? toAttrMap(attrs) : undefined,
         doms: doms ? toDomMap(doms) : undefined,
         subs: subs ? toMetaMap(subs) : undefined,
         rels: rels ? toMetaMap(rels) : undefined,
@@ -228,12 +228,12 @@ export class SimpleMeta implements Meta {
             return attr == null ? NaN : Number(attr);
         }
     }
-    intAttr(name: string, numOnly?: boolean): number {
-        let num = this.numAttr(name, numOnly);
+    intAttr(name: string, intOnly?: boolean): number {
+        let num = this.numAttr(name, intOnly);
         if (isNaN(num)) return num;
 
         let ret = Math.floor(num);
-        return numOnly && ret !== num ? NaN : ret;
+        return intOnly && ret !== num ? NaN : ret;
     }
     strAttr(name: string, otherwise?: string): string;
     strAttr(name: string, stringOnly: boolean): string | undefined;
@@ -289,6 +289,10 @@ export class SimpleMeta implements Meta {
 
     isValid() {
         return !this.isNil() && !this.isError();
+    }
+
+    withKind(kind: string): Meta {
+        return new SimpleMeta({ ...this, kind });
     }
 
     withMethod(method: string): Meta {
@@ -439,11 +443,23 @@ export function toStrMap(obj: any): StrMap {
     return ret;
 }
 
+export function toAttrMap(obj: any): AttrMap {
+    let ret: StrAttrMap = {};
+    for (let [k, v] of Object.entries(obj)) {
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null) {
+            ret[k] = v;
+        } else if (Array.isArray(v)) {
+            ret[k] = v.map(it => it.toString());
+        }
+    }
+    return ret;
+}
+
 export function toDomMap(obj: any): DomMap {
     let ret: StrDomMap = {};
     for (let [k, v] of Object.entries(obj)) {
         if (v && typeof v === 'object' && !Array.isArray(v)) {
-            ret[k] = toStrMap(v);
+            ret[k] = toAttrMap(v);
         }
     }
     return ret;

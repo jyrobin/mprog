@@ -46,13 +46,15 @@ export function simpleMaker(kind: string, fn: Processor, pre?: Middleware, ...ta
 }
 
 export function kindActorList(kind: string, actor: any,
-    opts?: { prefix?: string, methodNames?: string[], pre?: Middleware }
+    opts?: { cat?: string, prefix?: string, methodNames?: string[], pre?: Middleware }
 ): Actor[] {
-    let { prefix='', methodNames=[], pre } = opts || {};
+    let { prefix='', methodNames=[], pre, cat } = opts || {};
 
     if (methodNames.length === 0 && !prefix) {
         prefix = "mpi_";
     }
+
+    let tags = cat ? ['cat', cat.trim()] : [];
 
     let actors: Actor[] = [];
 
@@ -61,7 +63,7 @@ export function kindActorList(kind: string, actor: any,
         props.forEach(name => {
             if (typeof actor[name] === 'function' && name.startsWith(prefix)) {
                 let fn = actor[name].bind(actor);
-                actors.push(simpleActor(kind, name.slice(prefix.length), fn, pre));
+                actors.push(simpleActor(kind, name.slice(prefix.length), fn, pre, ...tags));
             }
         });
     }
@@ -69,7 +71,7 @@ export function kindActorList(kind: string, actor: any,
     methodNames.forEach(name => {
         if (typeof actor[name] === 'function') {
             let fn = actor[name].bind(actor);
-            actors.push(simpleActor(kind, name, fn, pre));
+            actors.push(simpleActor(kind, name, fn, pre, ...tags));
         }
     });
 
