@@ -1,18 +1,40 @@
 
 import { Request, Response} from 'express'; 
-import { Mpi, toMeta, toMetaMap } from '../index';
+import { newError, Meta, Mpi, toMeta0, Nil, toMetaOk } from '../index';
 
-export function newMpiHandler(mpi: Mpi) {
+export type OptsModifier = (req: Request, opts: Meta) => Meta; 
+
+export function simpleMpiHandler(mpi: Mpi, optsModifier?: OptsModifier) {
     return async function(req: Request, res: Response) {
-        let body = req.body;
+        const { method, meta, options } = req.body;
 
-        // TODO: try and 500
-        let { method, meta, ctx } = body;
-        let ret = await mpi.call(method, toMeta(meta), toMetaMap(ctx));
+        let err = '';
+        if (typeof method !== 'string') {
+            err = 'bad method';
+        }
+        const m = toMeta0(meta);
+        if (m.isNil() || m.isError()) {
+            err = err || 'bad input meta';
+        }
+
+        let [opts, ok] = options ? toMetaOk(options) : [Nil, true];
+        if (!ok) {
+            err = 'bad options';
+        } 
+
+        if (err) {
+            res.status(400).json(newError(err));
+            return;
+        }
+
+        if (optsModifier) opts = optsModifier(req, opts);
+
+        const ret = await mpi.call(method, m, opts);
         if (ret.isError()) {
             res.status(400).json(ret);
-        } else {
-            res.status(200).json(ret);
+            return;
         }
+
+        res.status(200).json(ret);
     }
 }

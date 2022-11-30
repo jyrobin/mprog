@@ -1,53 +1,59 @@
-import { Meta, Nil, toMeta, Mpi, MetaMap } from './meta';
-import { Domain, newDomain, newDomainList } from './domain';
-import { Actor, newActorList } from './actor';
+import { Meta, toMeta0, Mpi, StrMap } from './meta';
+import { Domain, newDomain } from './domain';
+import { Actor } from './actor';
+
+export type RemoteMpiConfig = {
+    fetch?: any,
+    axios?: any,
+    headers?: () => StrMap|undefined,
+}
 
 export class RemoteMpi implements Mpi {
     protected uri: string;
     protected fetch: any;
+    protected headers: () => StrMap|undefined;
 
-    constructor(uri: string, fetch?: any) {
+    constructor(uri: string, { fetch, headers }: RemoteMpiConfig = {}) {
         this.uri = uri;
         this.fetch = fetch || (window !== undefined && window.fetch);
+        this.headers = headers || (() => undefined); 
     }
-    call(method: string, meta: Meta, ctx?: MetaMap): Promise<Meta> {
-        return callMpi(this.fetch, this.uri, method, meta, ctx);
-    }
-    ctrl(method: string, meta: Meta = Nil, ctx?: MetaMap): Promise<Meta> {
-        // hack for now?
-        if (method === 'close' && meta.isNil()) return Promise.resolve(Nil);
-
-        return fetchMpi(this.fetch, this.uri, 'PATCH', method, meta, ctx);
+    call(method: string, meta: Meta, opts: Meta): Promise<Meta> {
+        return callMpi(this.fetch, this.uri, method, meta, opts, this.headers());
     }
 }
 
-export function callMpi(fetch: any, uri: string, method: string, meta: Meta, ctx?: MetaMap) {
-    return fetchMpi(fetch, uri, 'POST', method, meta, ctx);
+export function callMpi(fetch: any, uri: string, method: string, meta: Meta, opts: Meta, headers?: StrMap) {
+    return fetchMpi(fetch, uri, 'POST', method, meta, opts, headers);
 }
 
 type MpiHttpMethod = 'POST' | 'PATCH';
-async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: string, meta: Meta, ctx?: MetaMap): Promise<Meta> {
+async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: string, meta: Meta, opts: Meta, headers?: StrMap): Promise<Meta> {
     fetch = fetch || (window !== undefined && window.fetch);
 
+    const httpHeaders = {
+       'content-type': 'application/json',
+    };
+ 
     let res = await fetch(uri, {
         method: hm,
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: headers ? { ...headers, ...httpHeaders } : httpHeaders,
         body: JSON.stringify({
-            method, meta, ctx,
+            method,
+            meta,
+            options: opts,
         }),
     });
     let ret = await res.json();
-    return toMeta(ret);
+    return toMeta0(ret);
 }
 
-
-export function remoteActor(method: string, meta: Meta, uri: string, fetch: any): Actor {
+export function remoteActor(uri: string, method: string, meta: Meta, cfg?: RemoteMpiConfig): Actor {
+    const { fetch, headers } = cfg || {};
     return {
         meta,
-        process(m: Meta, ctx?: MetaMap) {
-            return callMpi(fetch, uri, method, m, ctx);
+        process(m: Meta, opts: Meta) {
+            return callMpi(fetch, uri, method, m, opts, headers && headers());
         },
     };
 }
@@ -66,19 +72,19 @@ export type RemoteDomainConfig = {
     subs?: RemoteDomainConfig[]
 }
 
-export function remoteDomain(defaultUri: string, cfg: RemoteDomainConfig, fetch: any): Domain {
+export function remoteDomain(defaultUri: string, cfg: RemoteDomainConfig, mpiCfg?: RemoteMpiConfig): Domain {
     let uri = cfg.uri || defaultUri;
     return newDomain({
         uri,
         meta: cfg.meta,
-        actors: newActorList(...toRemoteActors(uri, cfg.actors || [], fetch)),
-        ctrls: newActorList(...toRemoteActors(uri, cfg.ctrls || [], fetch)),
-        subs: newDomainList(...toRemoteDomains(uri, cfg.subs || [], fetch)), 
+        actors: toRemoteActors(uri, cfg.actors || [], mpiCfg),
+        ctrls: toRemoteActors(uri, cfg.ctrls || [], mpiCfg),
+        subs: toRemoteDomains(uri, cfg.subs || [], mpiCfg), 
     })
 }
 
-function toRemoteActors(defaultUri: string, cfgs: RemoteActorConfig[], fetch: any): Actor[] {
-    return cfgs.map(c => remoteActor(c.method, c.meta, c.uri || defaultUri, fetch));
+function toRemoteActors(defaultUri: string, cfgs: RemoteActorConfig[], cfg?: RemoteMpiConfig): Actor[] {
+    return cfgs.map(c => remoteActor(c.uri || defaultUri, c.method, c.meta, cfg));
 }
 
 function toRemoteDomains(defaultUri: string, cfgs: RemoteDomainConfig[], fetch: any): Domain[] {

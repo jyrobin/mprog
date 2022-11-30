@@ -6,50 +6,45 @@ export const TRUTH: Readonly<{ [key: string]: boolean }> = {
     '0': false, 'false': false, 'no': false, 'off': false,
 }
 
-export type Attr = string | number | boolean | null | Readonly<string[]>;
-
 export type Json = string | number | boolean | null |
     Json[] | { [key: string]: Json };
 export type JsonMap = { [key: string]: Json };
-export type AnyMap = { [key: string]: any };
 
-export type StrStrMap = { [key: string]: string }
-export type StrAttrMap = { [key: string]: Attr }
-export type StrDomMap = { [key: string]: StrAttrMap } // key is domain URI
-export type StrMetaMap = { [key: string]: Meta }
-export type StrMap = Readonly<StrStrMap>
-export type AttrMap = Readonly<StrAttrMap>
-export type DomMap = Readonly<{ [key: string]: AttrMap }>
-export type MetaMap = Readonly<StrMetaMap>
+export type StrMap = { [key: string]: string }
+export type MetaMap = { [key: string]: Meta }
+export type RoStrMap = Readonly<StrMap>
+export type RoMetaMap = Readonly<MetaMap>
 export type MetaList = Readonly<Meta[]>
+export type Headers = () => StrMap|undefined
+type AnyMap = { [key: string]: any }
 
-// TODO: if needed, ctx may have root or parent domain
 export interface Mpi {
-    call(method: string, meta: Meta, ctx?: MetaMap): Promise<Meta>
-    ctrl(method: string, meta?: Meta, ctx?: MetaMap): Promise<Meta>
+    call(method: string, meta: Meta, opts: Meta): Promise<Meta>
 }
 
 export const NilMpi = {
-    async call(method: string, meta: Meta, ctx?: MetaMap) {
-        return Nil;
-    },
-    async ctrl(method: string, meta?: Meta, ctx?: MetaMap) {
+    async call(method: string, meta: Meta, opts: Meta) {
         return Nil;
     },
 }
 
-export type MetaType = {
+export type MetaConfig = {
     kind: string
     method?: string
     ns?: string
     gid?: string
-    payload?: Attr
+    payload?: string
     tags?: StrMap
-    attrs?: AttrMap
-    doms?: DomMap
+    attrs?: StrMap
     subs?: MetaMap
     rels?: MetaMap
     list?: MetaList
+}
+
+type StringValue = string|number|boolean|null|undefined;
+
+function isValue(v: unknown): boolean {
+    return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
 }
 
 export interface Meta {
@@ -57,31 +52,32 @@ export interface Meta {
     readonly method?: string
     readonly ns?: string
     readonly gid?: string
-    readonly payload?: Attr
-    readonly tags: StrMap
-    readonly attrs: AttrMap
-    readonly doms: DomMap
-    readonly subs: MetaMap
-    readonly rels: MetaMap
+    readonly payload?: string
+    readonly tags: RoStrMap
+    readonly attrs: RoStrMap
+    readonly subs: RoMetaMap
+    readonly rels: RoMetaMap
     readonly list: MetaList
 
     isNil(): boolean
 
     tag(name: string): string | undefined
     hasTag(...args: string[]): boolean
-    hasTags(tags: StrStrMap): boolean
+    hasTags(tags: StrMap): boolean
     is(kind: string, ns: string, ...tags: string[]): boolean
 
-    attr(name: string): Attr | undefined
-    hasAttr(...args: string[]): boolean
-    hasAttrs(attrs: StrAttrMap): boolean
-    numAttr(name: string, numberOnly?: boolean): number
-    intAttr(name: string, intOnly?: boolean): number
-    strAttr(name: string, stringOnly: boolean): string|undefined
-    strAttr(name: string, otherwise?: string): string
+    attr(name: string, otherwise?: string): string
+    attrOk(name: string): [string, boolean]
+    hasAttr(...args: StringValue[]): boolean
+    hasAttrs(attrs: StrMap): boolean
+    numAttr(name: string, otherwise?: number): number
+    numAttrOk(name: string): [number, boolean]
+    intAttr(name: string, otherwise?: number): number
+    intAttrOk(name: string): [number, boolean]
     boolAttr(name: string, otherwise?: boolean): boolean
-    dateAttr(name: string): Date | undefined
-    domAttrs(uri: string): AttrMap | undefined
+    boolAttrOk(name: string): [boolean, boolean]
+    dateAttr(name: string, otherwise?: Date): Date
+    dateAttrOk(name: string): [Date, boolean]
 
     isError(): boolean
     parseError(defaultCode: number): [string, number]
@@ -94,23 +90,24 @@ export interface Meta {
 
     setTag(name: string, value: string, ...rest: string[]): Meta
     withTag(name: string, value: string, ...rest: string[]): Meta
-    setTags(tags: StrStrMap): Meta
-    withTags(tags: StrStrMap): Meta
-    setAttr(...args: (Attr|undefined)[]): Meta
-    withAttr(...args: (Attr|undefined)[]): Meta
-    setAttrs(attrs: StrAttrMap): Meta
-    withAttrs(attrs: StrAttrMap): Meta
-
-    setDomAttr(uri: string, ...args: string[]): Meta
-    setDomAttrs(uri: string, attrs: StrAttrMap): Meta
+    delTag(...names: string[]): Meta
+    setTags(tags: StrMap): Meta
+    withTags(tags: StrMap): Meta
+    setAttr(...args: StringValue[]): Meta
+    delAttr(...names: string[]): Meta
+    withAttr(...args: StringValue[]): Meta
+    setAttrs(attrs: StrMap): Meta
+    withAttrs(attrs: StrMap): Meta
 
     withSub(name: string, sub: Meta): Meta
-    withSubs(subs: StrMetaMap): Meta
+    delSub(...names: string[]): Meta
+    withSubs(subs: MetaMap): Meta
     hasSub(name: string): boolean
     sub(name: string): Meta
 
     withRel(name: string, rel: Meta): Meta
-    withRels(rels: StrMetaMap): Meta
+    delRel(...names: string[]): Meta
+    withRels(rels: MetaMap): Meta
     hasRel(name: string): boolean
     rel(name: string): Meta
 
@@ -131,41 +128,57 @@ export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
         kind, method, tags: arrayToStrMap(tags),
     });
 }
-export function newMeta(mt: MetaType, ...attrs: (string | null | undefined)[]): Meta {
-    let ret = new SimpleMeta(mt);
+export function newMeta(mt: MetaConfig, ...attrs: StringValue[]): Meta {
+    const ret = new SimpleMeta(mt);
     return attrs.length > 0 ? ret.withAttr(...attrs) : ret;
 }
 
-export function parseMeta(str: string): Meta {
-    let obj = JSON.parse(str);
-    return toMeta(obj);
+export function parseMeta(str: string): [Meta, boolean] {
+    const obj = JSON.parse(str);
+    return toMetaOk(obj);
 }
 
-export function toMeta(obj: any): Meta {
-    let { kind, method, ns, gid, payload, tags, attrs, doms, subs, rels, list } = obj;
-    return new SimpleMeta({
+export function toMeta0(obj: unknown): Meta {
+    return toMetaOk(obj)[0]; // just Nil for false case
+}
+
+export function toMetaOk(obj: unknown): [Meta, boolean] {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [Nil, false] 
+
+    // avoid using external library
+    const { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = toPlainObject(obj);
+    let b = typeof kind === 'string';
+    b = b && (method === undefined || typeof method === 'string');
+    b = b && (ns === undefined || typeof ns === 'string');
+    b = b && (gid === undefined || typeof gid === 'string');
+    b = b && (payload === undefined || typeof payload === 'string');
+    if (!b) return [Nil, false];
+
+    // but then something inside may be skipped
+    return [new SimpleMeta({
         kind, method, ns, gid, payload,
         tags: tags ? toStrMap(tags) : undefined,
         attrs: attrs ? toAttrMap(attrs) : undefined,
-        doms: doms ? toDomMap(doms) : undefined,
         subs: subs ? toMetaMap(subs) : undefined,
         rels: rels ? toMetaMap(rels) : undefined,
         list: list ? toMetaList(list) : undefined,
-    });
+    }), true];
 }
 
-export function toMetaMap(obj: unknown): MetaMap | undefined {
+export function toMetaMap(obj: unknown): RoMetaMap | undefined {
     if (obj && typeof obj === 'object') {
-        let ret: StrMetaMap = {};
+        const ret: MetaMap = {};
         for (let [k, v] of Object.entries(obj)) {
-            ret[k] = toMeta(v);
+            const [m, ok] = toMetaOk(v);
+            if (ok) ret[k] = m;
         }
         return ret;
     }
+    return;
 }
 
-export function toMetaList(obj: any): MetaList {
-    return obj.map(toMeta);
+export function toMetaList(obj: unknown): MetaList {
+    return Array.isArray(obj) ? obj.map(toMeta0) : [];
 }
 
 export class SimpleMeta implements Meta {
@@ -173,15 +186,14 @@ export class SimpleMeta implements Meta {
     readonly method?: string
     readonly ns?: string
     readonly gid?: string
-    readonly payload?: Attr
-    readonly tags: StrMap
-    readonly attrs: AttrMap
-    readonly doms: DomMap
-    readonly subs: MetaMap
-    readonly rels: MetaMap
+    readonly payload?: string
+    readonly tags: RoStrMap
+    readonly attrs: RoStrMap
+    readonly subs: RoMetaMap
+    readonly rels: RoMetaMap
     readonly list: MetaList
-    constructor(mt: MetaType) {
-        const { kind, method, ns, gid, payload, tags, attrs, doms, subs, rels, list } = mt;
+    constructor(mt: MetaConfig) {
+        const { kind, method, ns, gid, payload, tags, attrs, subs, rels, list } = mt;
         this.kind = kind;
         method && (this.method = method);
         ns && (this.ns = ns);
@@ -189,7 +201,6 @@ export class SimpleMeta implements Meta {
         payload && (this.payload = payload);
         this.tags = tags || {};
         this.attrs = attrs || {};
-        this.doms = doms || {};
         this.subs = subs || {};
         this.rels = rels || {};
         this.list = list || [];
@@ -204,75 +215,72 @@ export class SimpleMeta implements Meta {
     hasTag(...args: string[]) {
         return hasValue(this.tags, args);
     }
-    hasTags(ts: StrStrMap) {
+    hasTags(ts: StrMap) {
         return hasValues(this.tags, ts)
     }
     is(kind: string, ns?: string, ...tags: string[]) {
         return this.kind === kind && this.ns === (ns || '') && this.hasTag(...tags);
     }
-    attr(name: string) {
-        return this.attrs[name];
+
+    attr(name: string, otherwise?: string): string {
+        const ret = this.attrs[name];
+        return typeof ret === 'string' ? ret : (otherwise || '');
     }
-    hasAttr(...args: string[]) {
+
+    attrOk(name: string): [string, boolean] {
+        const ret = this.attrs[name];
+        return typeof ret === 'string' ? [ret, true] : ['', false];
+    }
+
+    hasAttr(...args: StringValue[]) {
         return hasValue(this.attrs, args);
     }
     hasAttrs(ts: StrMap) {
         return hasValues(this.attrs, ts)
     }
 
-    numAttr(name: string, numOnly?: boolean): number {
-        let attr = this.attr(name);
-        if (numOnly) {
-            return typeof attr === 'number' ? attr : NaN;
-        } else {
-            return attr == null ? NaN : Number(attr);
-        }
+    numAttr(name: string, otherwise?: number): number {
+        const ret = Number(this.attrs[name]);
+        return !isNaN(ret) ? ret : (otherwise === undefined ? NaN : otherwise);
     }
-    intAttr(name: string, intOnly?: boolean): number {
-        let num = this.numAttr(name, intOnly);
-        if (isNaN(num)) return num;
-
-        let ret = Math.floor(num);
-        return intOnly && ret !== num ? NaN : ret;
+    numAttrOk(name: string): [number, boolean] {
+        const ret = Number(this.attrs[name]);
+        return [ret, isNaN(ret)]
     }
-    strAttr(name: string, otherwise?: string): string;
-    strAttr(name: string, stringOnly: boolean): string | undefined;
-    strAttr(name: string, opt?: boolean|string): string | undefined{
-        let attr = this.attr(name);
-        if (typeof attr === 'string') return attr;
-
-        if (typeof opt === 'boolean') { // string only
-            return opt ? undefined : attr?.toString();
-        } else {
-            return opt || '';
-        }
+ 
+    intAttr(name: string, otherwise?: number): number {
+        const ret = Number(this.attrs[name]);
+        if (!isNaN(ret) && ret === Math.floor(ret)) return ret;
+        return otherwise === undefined ? NaN : Math.floor(otherwise);
+    }
+    intAttrOk(name: string): [number, boolean] {
+        const ret = Number(this.attrs[name]);
+        if (!isNaN(ret) && ret === Math.floor(ret)) return [ret, true];
+        return [ret, false];
     }
 
     boolAttr(name: string, otherwise: boolean = false): boolean {
-        let attr = this.attr(name);
-        if (attr === undefined) {
-            return otherwise;
-        } else if (typeof attr === 'string') {
-            let ret = TRUTH[attr.toLowerCase()];
-            return ret === undefined ? otherwise : ret;
-        } else {
-            return !!attr;
-        }
+        const attr = this.attrs[name];
+        if (attr === undefined) return otherwise;
+
+        const ret = TRUTH[attr.toLowerCase()];
+        return ret === undefined ? otherwise : ret;
+    }
+    boolAttrOk(name: string): [boolean, boolean] {
+        const attr = this.attrs[name];
+        if (attr === undefined) return [false, false];
+
+        const ret = TRUTH[attr.toLowerCase()];
+        return ret === undefined ? [false, false] : [ret, true];
     }
 
-    dateAttr(name: string) {
-        let attr = this.attr(name);
-        if (typeof attr === 'string' || typeof attr === 'number') {
-            let d = new Date(attr);
-            if (!isNaN(d.valueOf())) {
-                return d;
-            }
-        }
-        return undefined;
+    dateAttr(name: string, otherwise?: Date): Date {
+        const d = new Date(this.attr(name));
+        return !isNaN(d.valueOf()) ? d : (otherwise === undefined ? d : otherwise); 
     }
-
-    domAttrs(uri: string) {
-        return this.doms[uri];
+    dateAttrOk(name: string): [Date, boolean] {
+        const d = new Date(this.attr(name));
+        return [d, !isNaN(d.valueOf())]
     }
 
     // meta
@@ -281,7 +289,7 @@ export class SimpleMeta implements Meta {
         return this.kind === ErrorKind;
     }
     parseError(defaultCode: number): [string, number] {
-        let msg = this.attr('message');
+        const msg = this.attr('message');
         let code = Number(this.attr('code'));
         if (isNaN(code)) code = defaultCode;
         return [msg?.toString() || '', code];
@@ -308,56 +316,59 @@ export class SimpleMeta implements Meta {
     }
 
     setTag(...args: string[]) {
-        let tags = arrayToStrMap(args);
+        const tags = arrayToStrMap(args);
         return new SimpleMeta({ ...this, tags });
     }
     withTag(...args: string[]) {
         if (args.length === 0) return this;
 
-        let tags = { ...this.tags, ...arrayToStrMap(args) };
+        const tags = { ...this.tags, ...arrayToStrMap(args) };
         return new SimpleMeta({ ...this, tags });
     }
-    setTags(tags: StrStrMap) {
+    delTag(...names: string[]) {
+        if (names.length === 0) return this; 
+
+        const tags = { ...this.tags }
+        names.forEach(name => delete tags[name]);
         return new SimpleMeta({ ...this, tags });
     }
-    withTags(tagMap: StrStrMap) {
+
+    setTags(tags: StrMap) {
+        return new SimpleMeta({ ...this, tags });
+    }
+    withTags(tagMap: StrMap) {
         if (isEmpty(tagMap)) return this;
 
-        let tags = { ...this.tags, ...tagMap };
+        const tags = { ...this.tags, ...tagMap };
         return new SimpleMeta({ ...this, tags });
     }
 
-    setAttr(...args: (Attr | undefined)[]) {
-        let attrs = arrayToAttrMap(args);
+    setAttr(...args: StringValue[]) {
+        const attrs = arrayToStrMap(args);
         return new SimpleMeta({ ...this, attrs });
     }
-    withAttr(...args: (Attr | undefined)[]) {
+    delAttr(...names: string[]) {
+        if (names.length === 0) return this; 
+
+        const attrs = { ...this.attrs }
+        names.forEach(name => delete attrs[name]);
+        return new SimpleMeta({ ...this, attrs });
+    }
+
+    withAttr(...args: StringValue[]) {
         if (args.length === 0) return this;
 
-        let attrs = { ...this.attrs, ...arrayToAttrMap(args) };
+        const attrs = { ...this.attrs, ...arrayToStrMap(args) };
         return new SimpleMeta({ ...this, attrs });
     }
-    setAttrs(attrs: StrAttrMap) {
+    setAttrs(attrs: StrMap) {
         return new SimpleMeta({ ...this, attrs });
     }
-    withAttrs(attrMap: StrAttrMap) {
+    withAttrs(attrMap: StrMap) {
         if (isEmpty(attrMap)) return this;
 
-        let attrs = { ...this.attrs, ...attrMap };
+        const attrs = { ...this.attrs, ...attrMap };
         return new SimpleMeta({ ...this, attrs });
-    }
-
-    setDomAttr(uri: string, ...args: string[]) {
-        return new SimpleMeta({
-            ...this,
-            doms: setDomMap(this.doms, uri, arrayToStrMap(args)),
-        });
-    }
-    setDomAttrs(uri: string, attrs: StrAttrMap) {
-        return new SimpleMeta({
-            ...this,
-            doms: setDomMap(this.doms, uri, attrs),
-        });
     }
 
     sub(name: string): Meta {
@@ -367,11 +378,19 @@ export class SimpleMeta implements Meta {
         return !!this.subs[name];
     }
     withSub(name: string, sub: Meta) {
-        let subs = { ...this.subs, [name]: sub };
+        const subs = { ...this.subs, [name]: sub };
         return new SimpleMeta({ ...this, subs });
     }
+    delSub(...names: string[]) {
+        if (names.length === 0) return this; 
+
+        const subs = { ...this.subs }
+        names.forEach(name => delete subs[name]);
+        return new SimpleMeta({ ...this, subs });
+    }
+
     withSubs(subMap: MetaMap) {
-        let subs = { ...this.subs, ...subMap };
+        const subs = { ...this.subs, ...subMap };
         return new SimpleMeta({ ...this, subs });
     }
 
@@ -382,11 +401,19 @@ export class SimpleMeta implements Meta {
         return !!this.rels[name];
     }
     withRel(name: string, rel: Meta) {
-        let rels = { ...this.rels, [name]: rel };
+        const rels = { ...this.rels, [name]: rel };
         return new SimpleMeta({ ...this, rels });
     }
+    delRel(...names: string[]) {
+        if (names.length === 0) return this; 
+
+        const rels = { ...this.rels }
+        names.forEach(name => delete rels[name]);
+        return new SimpleMeta({ ...this, rels });
+    }
+
     withRels(relMap: MetaMap) {
-        let rels = { ...this.rels, ...relMap };
+        const rels = { ...this.rels, ...relMap };
         return new SimpleMeta({ ...this, rels });
     }
 
@@ -433,76 +460,76 @@ export class SimpleMeta implements Meta {
     }
 }
 
-export function toStrMap(obj: any): StrMap {
-    let ret: StrStrMap = {};
-    for (let [k, v] of Object.entries(obj)) {
-        if (typeof v === 'string') {
-            ret[k] = v;
+export function toPlainObject(obj: unknown): {[key: string]: any} {
+    if (obj && typeof obj === 'object' && !Array.isArray(obj) && !(obj instanceof Date)) {
+        return obj as {[key: string]: any};
+    }
+    return {};
+}
+
+export function toStrMap(obj: unknown): RoStrMap {
+    const ret: StrMap = {};
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        for (let [k, v] of Object.entries(obj)) {
+            if (typeof v === 'string') {
+                ret[k] = v;
+            }
         }
     }
     return ret;
 }
 
-export function toAttrMap(obj: any): AttrMap {
-    let ret: StrAttrMap = {};
-    for (let [k, v] of Object.entries(obj)) {
-        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null) {
-            ret[k] = v;
-        } else if (Array.isArray(v)) {
-            ret[k] = v.map(it => it.toString());
+export function toAttrMap(obj: unknown): RoStrMap {
+    const ret: StrMap = {};
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        for (let [k, v] of Object.entries(obj)) {
+            if (isValue(v)) {
+                ret[k] = v.toString();
+            }
         }
     }
     return ret;
 }
 
-export function toDomMap(obj: any): DomMap {
-    let ret: StrDomMap = {};
-    for (let [k, v] of Object.entries(obj)) {
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-            ret[k] = toAttrMap(v);
-        }
-    }
-    return ret;
-}
-
-export function arrayToStrMap(args: (string | undefined | null)[]): StrMap {
-    let ret: StrStrMap = {};
+export function arrayToStrMap(args: StringValue[]): StrMap {
+    const ret: StrMap = {};
     for (let i = 1, n = args.length; i < n; i += 2) {
-        let k = args[i - 1];
-        let v = args[i];
-        if (k != null && v != null) {
-            ret[k] = v;
+        const k = args[i - 1];
+        const v = args[i];
+        if (typeof k === 'string') {
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                ret[k] = v.toString();
+            }
         }
     }
     return ret;
 }
 
-export function arrayToAttrMap(args: (Attr|undefined)[]): StrAttrMap {
-    let ret: StrAttrMap = {};
-    for (let i = 1, n = args.length; i < n; i += 2) {
-        let k = args[i - 1];
-        let v = args[i];
-        if (typeof k === 'string' && v !== undefined) {
-            ret[k] = v;
-        }
-    }
-    return ret;
-}
-
-
-function hasValue(vals: AttrMap, args: string[]): boolean {
-    let argn = args.length;
+function hasValue(vals: RoStrMap, args: StringValue[]): boolean {
+    const argn = args.length;
     for (let i = 0, n = argn / 2; i < n; i++) {
-        let key = args[2 * i];
-        let val = vals[key];
-        if (val === undefined || val !== args[2 * i + 1]) {
-            return false
+        const key = args[2 * i];
+        if (typeof key !== 'string') return false;
+
+        const val = vals[key];
+        const arg = args[2 * i + 1];
+        if (val === undefined) {
+            if (arg != null) return false;
+        } else if (isValue(val)) {
+            if (arg == null || arg.toString() !== val) return false;
+        } else {
+            return false;
         }
     }
-    return argn % 2 === 0 || vals[args[argn - 1]] !== undefined;
+    if (argn % 2 !== 0) {
+        const key = args[argn - 1];
+        if (typeof key !== 'string' || vals[key] === undefined) return false;
+    }
+
+    return true
 }
 
-function hasValues(vals: AttrMap, ts: StrMap): boolean {
+function hasValues(vals: RoStrMap, ts: StrMap): boolean {
     for (let [key, value] of Object.entries(ts)) {
         if (vals[key] !== value) {
             return false;
@@ -511,21 +538,12 @@ function hasValues(vals: AttrMap, ts: StrMap): boolean {
     return true;
 }
 
-export function setDomMap(old: DomMap, key: string, val: AttrMap): DomMap {
-    let ret: StrDomMap = {};
-    for (let [k, v] of Object.entries(old)) {
-        ret[k] = v;
-    }
-    ret[key] = val;
-    return ret;
-}
-
 export const Nil: Meta = new SimpleMeta({ kind: '' });
 
 export interface Visitor {
     beginMeta(m: Meta, kind: string, method?: string, ns?: string, gid?: string): void;
     onTag(m: Meta, name: string, value: string): void
-    onAttr(m: Meta, name: string, value: Attr): void
+    onAttr(m: Meta, name: string, value: string): void
     onSub(m: Meta, name: string, sub: Meta): void
     onRel(m: Meta, name: string, rel: Meta): void
     onListItem(m: Meta, index: number, item: Meta): void
@@ -548,12 +566,16 @@ export function firstMeta(ms: MetaList | Meta[]): Meta {
     return ms[0] || Nil;
 }
 
-export function firstAttr(ms: MetaList, name: string): Attr | undefined {
-    return firstMeta(ms).attr(name)
+export function firstAttr(ms: MetaList, name: string, otherwise?: string): string {
+    return firstMeta(ms).attr(name, otherwise)
+}
+
+export function firstAttrOk(ms: MetaList, name: string): [string, boolean] {
+    return firstMeta(ms).attrOk(name)
 }
 
 export function firstIs(ms: MetaList, kind: string, ns: string, ...tags: string[]): Meta {
-    let ret = firstMeta(ms)
+    const ret = firstMeta(ms)
     return !ret.isNil() && ret.is(kind, ns, ...tags) ? ret : Nil;
 }
 
@@ -569,26 +591,25 @@ function isEmpty(val: unknown): boolean {
 
 // partially cloned only, for readonly use 
 export function toJson(m: Meta, expandPayload?: boolean): JsonMap {
-    let ret: Json = { kind: m.kind };
-    if (m.method) ret.method = m.method;
-    if (m.ns) ret.ns = m.ns;
-    if (m.gid) ret.gid = m.gid;
+    const ret: Json = { kind: m.kind };
+    if (m.method) ret["method"] = m.method;
+    if (m.ns) ret["ns"] = m.ns;
+    if (m.gid) ret["gid"] = m.gid;
 
     if (m.payload !== undefined) {
-        let pl = m.payload;
+        const pl = m.payload;
         if (expandPayload && typeof pl === 'string') {
-            ret.payload = JSON.parse(pl) as Json;
+            ret["payload"] = JSON.parse(pl) as Json;
         } else {
-            ret.payload = m.payload as Json;
+            ret["payload"] = m.payload as Json;
         }
     }
 
-    isEmpty(m.tags) || (ret.tags = m.tags as Json);
-    isEmpty(m.attrs) || (ret.attrs = m.attrs as Json);
-    isEmpty(m.doms) || (ret.doms = m.doms as Json);
-    isEmpty(m.subs) || (ret.subs = toJsonMap(m.subs, expandPayload));
-    isEmpty(m.rels) || (ret.subs = toJsonMap(m.rels, expandPayload));
-    isEmpty(m.list) || (ret.list = m.list.map(it => toJson(it, expandPayload)));
+    isEmpty(m.tags) || (ret["tags"] = m.tags as Json);
+    isEmpty(m.attrs) || (ret["attrs"] = m.attrs as Json);
+    isEmpty(m.subs) || (ret["subs"] = toJsonMap(m.subs, expandPayload));
+    isEmpty(m.rels) || (ret["subs"] = toJsonMap(m.rels, expandPayload));
+    isEmpty(m.list) || (ret["list"] = m.list.map(it => toJson(it, expandPayload)));
     return ret;
 }
 
@@ -603,19 +624,21 @@ export function toJsonMap(mmap: { [key: string]: Meta }, expandPayload?: boolean
 export enum HttpCode {
     BAD_REQUEST = 400,
     UNAUTHORIZED = 401,
+    FORBIDDEN = 403,
     NOT_FOUND = 404,
     INTERNAL_SERVER = 500,
 }
 
-export const HttpError: { [key: number]: string } = {
+export const HttpError = {
     400: 'Bad request',
     401: 'Unauthorized',
+    403: 'Forbidden',
     404: 'Not found',
     500: 'Internal server error',
 }
 
 export function newError(msg: string, code?: string | HttpCode) {
-    let ret = newMeta({ kind: ErrorKind }, 'message', msg);
+    const ret = newMeta({ kind: ErrorKind }, 'message', msg);
     return code === undefined ? ret : ret.withAttr('code', code + '');
 }
 
