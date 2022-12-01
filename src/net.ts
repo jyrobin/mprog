@@ -1,4 +1,4 @@
-import { Meta, toMeta0, Mpi, StrMap } from './meta';
+import { Meta, toMeta, Mpi, StrMap } from './meta';
 import { Domain, newDomain } from './domain';
 import { Actor } from './actor';
 
@@ -45,7 +45,7 @@ async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: stri
         }),
     });
     let ret = await res.json();
-    return toMeta0(ret);
+    return toMeta(ret);
 }
 
 export function remoteActor(uri: string, method: string, meta: Meta, cfg?: RemoteMpiConfig): Actor {

@@ -138,7 +138,7 @@ export function parseMeta(str: string): [Meta, boolean] {
     return toMetaOk(obj);
 }
 
-export function toMeta0(obj: unknown): Meta {
+export function toMeta(obj: unknown): Meta {
     return toMetaOk(obj)[0]; // just Nil for false case
 }
 
@@ -178,7 +178,7 @@ export function toMetaMap(obj: unknown): RoMetaMap | undefined {
 }
 
 export function toMetaList(obj: unknown): MetaList {
-    return Array.isArray(obj) ? obj.map(toMeta0) : [];
+    return Array.isArray(obj) ? obj.map(toMeta) : [];
 }
 
 export class SimpleMeta implements Meta {
@@ -539,6 +539,7 @@ function hasValues(vals: RoStrMap, ts: StrMap): boolean {
 }
 
 export const Nil: Meta = new SimpleMeta({ kind: '' });
+export const NilOptions: Meta = new SimpleMeta({ kind: 'Options' });
 
 export interface Visitor {
     beginMeta(m: Meta, kind: string, method?: string, ns?: string, gid?: string): void;

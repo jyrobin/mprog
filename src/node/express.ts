@@ -1,6 +1,6 @@
 
 import { Request, Response} from 'express'; 
-import { newError, Meta, Mpi, toMeta0, Nil, toMetaOk } from '../index';
+import { newError, Meta, Mpi, toMeta, NilOptions, toMetaOk } from '../index';
 
 export type OptsModifier = (req: Request, opts: Meta) => Meta; 
 
@@ -12,12 +12,12 @@ export function simpleMpiHandler(mpi: Mpi, optsModifier?: OptsModifier) {
         if (typeof method !== 'string') {
             err = 'bad method';
         }
-        const m = toMeta0(meta);
+        const m = toMeta(meta);
         if (m.isNil() || m.isError()) {
             err = err || 'bad input meta';
         }
 
-        let [opts, ok] = options ? toMetaOk(options) : [Nil, true];
+        let [opts, ok] = options ? toMetaOk(options) : [NilOptions, true];
         if (!ok) {
             err = 'bad options';
         } 
