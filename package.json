@@ -6,7 +6,7 @@
   "author": "Jing-Ying Chen <jy.robin.chen@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "build": "tsc --build"
+    "build": "yarn tsc"
   },
   "dependencies": {
     "@jyrobin/jslib": "*",
