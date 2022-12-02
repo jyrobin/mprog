@@ -18,17 +18,17 @@ export class RemoteMpi implements Mpi {
         this.fetch = fetch || (window !== undefined && window.fetch);
         this.headers = headers || (() => undefined); 
     }
-    call(method: string, meta: Meta, opts: Meta): Promise<Meta> {
+    call(method: string, meta: Meta, opts?: Meta): Promise<Meta> {
         return callMpi(this.fetch, this.uri, method, meta, opts, this.headers());
     }
 }
 
-export function callMpi(fetch: any, uri: string, method: string, meta: Meta, opts: Meta, headers?: StrMap) {
+export function callMpi(fetch: any, uri: string, method: string, meta: Meta, opts?: Meta, headers?: StrMap) {
     return fetchMpi(fetch, uri, 'POST', method, meta, opts, headers);
 }
 
 type MpiHttpMethod = 'POST' | 'PATCH';
-async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: string, meta: Meta, opts: Meta, headers?: StrMap): Promise<Meta> {
+async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: string, meta: Meta, opts?: Meta, headers?: StrMap): Promise<Meta> {
     fetch = fetch || (window !== undefined && window.fetch);
 
     const httpHeaders = {

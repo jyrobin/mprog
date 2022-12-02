@@ -19,11 +19,11 @@ export type Headers = () => StrMap|undefined
 type AnyMap = { [key: string]: any }
 
 export interface Mpi {
-    call(method: string, meta: Meta, opts: Meta): Promise<Meta>
+    call(method: string, meta: Meta, opts?: Meta): Promise<Meta>
 }
 
 export const NilMpi = {
-    async call(method: string, meta: Meta, opts: Meta) {
+    async call(method: string, meta: Meta, opts?: Meta) {
         return Nil;
     },
 }

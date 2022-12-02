@@ -200,7 +200,7 @@ export class DomainImpl implements Domain {
         return undefined 
     }
 
-    async call(method: string, meta: Meta, opts: Meta) {
+    async call(method: string, meta: Meta, opts?: Meta) {
         if (meta.isNil()) {
             return newError(`Calling ${method} with nil meta`);
         }
@@ -212,7 +212,7 @@ export class DomainImpl implements Domain {
         }
 
         try {
-            let ret = await actor.process(meta, opts);
+            let ret = await actor.process(meta, opts || Nil);
             return ret === undefined ? Nil : ret;
         } catch(err) {
             return newError(`[${meta.kind}.${method}] ${err}`);

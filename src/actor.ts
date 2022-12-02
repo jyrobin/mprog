@@ -4,7 +4,7 @@ import { Meta, simpleMeta } from './meta';
 
 export interface Actor {
     meta: Meta
-    process(m: Meta, opts: Meta): Promise<Meta>
+    process(m: Meta, opts: Meta): Promise<Meta>; // make opts non-optional here
 }
 
 export type Processor = (m: Meta, opts: Meta) => Promise<Meta>;
