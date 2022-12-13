@@ -10,6 +10,7 @@ export type Json = string | number | boolean | null |
     Json[] | { [key: string]: Json };
 export type JsonMap = { [key: string]: Json };
 
+export type MaybeStrMap = { [key: string]: string|undefined }
 export type StrMap = { [key: string]: string }
 export type MetaMap = { [key: string]: Meta }
 export type RoStrMap = Readonly<StrMap>
@@ -47,6 +48,15 @@ function isValue(v: unknown): boolean {
     return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
 }
 
+function trimStrMap(map: MaybeStrMap): StrMap {
+    const ret: StrMap = {};
+    Object.keys(map).forEach(k => {
+        const v = map[k];
+        if (typeof v === 'string') ret[k] = v;
+    });
+    return ret;
+}
+
 export interface Meta {
     readonly kind: string
     readonly method?: string
@@ -64,7 +74,7 @@ export interface Meta {
     tag(name: string): string | undefined
     hasTag(...args: string[]): boolean
     hasTags(tags: StrMap): boolean
-    is(kind: string, ns: string, ...tags: string[]): boolean
+    is(kind: string, ns?: string, ...tags: string[]): boolean
 
     attr(name: string, otherwise?: string): string
     attrOk(name: string): [string, boolean]
@@ -80,8 +90,8 @@ export interface Meta {
     dateAttrOk(name: string): [Date, boolean]
 
     isError(): boolean
+    statusCode(defaultCode?: number): number
     parseError(defaultCode: number): [string, number]
-    isValid(): boolean
 
     withKind(kind: string): Meta
     withMethod(mthd: string): Meta
@@ -97,7 +107,7 @@ export interface Meta {
     delAttr(...names: string[]): Meta
     withAttr(...args: StringValue[]): Meta
     setAttrs(attrs: StrMap): Meta
-    withAttrs(attrs: StrMap): Meta
+    withAttrs(attrs: MaybeStrMap): Meta
 
     withSub(name: string, sub: Meta): Meta
     delSub(...names: string[]): Meta
@@ -294,9 +304,9 @@ export class SimpleMeta implements Meta {
         if (isNaN(code)) code = defaultCode;
         return [msg?.toString() || '', code];
     }
-
-    isValid() {
-        return !this.isNil() && !this.isError();
+    statusCode(defaultCode: number = 500): number {
+        let code = Number(this.attr('code'));
+        return !isNaN(code) ? code : defaultCode;
     }
 
     withKind(kind: string): Meta {
@@ -364,10 +374,11 @@ export class SimpleMeta implements Meta {
     setAttrs(attrs: StrMap) {
         return new SimpleMeta({ ...this, attrs });
     }
-    withAttrs(attrMap: StrMap) {
-        if (isEmpty(attrMap)) return this;
+    withAttrs(attrMap: MaybeStrMap) {
+        const strMap = trimStrMap(attrMap);
+        if (isEmpty(strMap)) return this;
 
-        const attrs = { ...this.attrs, ...attrMap };
+        const attrs = { ...this.attrs, ...strMap };
         return new SimpleMeta({ ...this, attrs });
     }
 
@@ -539,7 +550,6 @@ function hasValues(vals: RoStrMap, ts: StrMap): boolean {
 }
 
 export const Nil: Meta = new SimpleMeta({ kind: '' });
-export const NilOptions: Meta = new SimpleMeta({ kind: 'Options' });
 
 export interface Visitor {
     beginMeta(m: Meta, kind: string, method?: string, ns?: string, gid?: string): void;
@@ -565,19 +575,6 @@ function walk(m: Meta, v: Visitor) {
 
 export function firstMeta(ms: MetaList | Meta[]): Meta {
     return ms[0] || Nil;
-}
-
-export function firstAttr(ms: MetaList, name: string, otherwise?: string): string {
-    return firstMeta(ms).attr(name, otherwise)
-}
-
-export function firstAttrOk(ms: MetaList, name: string): [string, boolean] {
-    return firstMeta(ms).attrOk(name)
-}
-
-export function firstIs(ms: MetaList, kind: string, ns: string, ...tags: string[]): Meta {
-    const ret = firstMeta(ms)
-    return !ret.isNil() && ret.is(kind, ns, ...tags) ? ret : Nil;
 }
 
 function isEmpty(val: unknown): boolean {
@@ -622,13 +619,15 @@ export function toJsonMap(mmap: { [key: string]: Meta }, expandPayload?: boolean
 
 // errors
 
-export enum HttpCode {
+export enum HttpErrorCode {
     BAD_REQUEST = 400,
     UNAUTHORIZED = 401,
     FORBIDDEN = 403,
     NOT_FOUND = 404,
     INTERNAL_SERVER = 500,
 }
+
+export type ErrorCode = string | HttpErrorCode;
 
 export const HttpError = {
     400: 'Bad request',
@@ -638,27 +637,29 @@ export const HttpError = {
     500: 'Internal server error',
 }
 
-export function newError(msg: string, code?: string | HttpCode) {
+export function metaError(msg: string, code: ErrorCode = 400) {
     const ret = newMeta({ kind: ErrorKind }, 'message', msg);
-    return code === undefined ? ret : ret.withAttr('code', code + '');
+    return ret.withAttr('code', code);
 }
 
 export function notFound(msg?: string) {
-    return newError(msg || HttpError[HttpCode.NOT_FOUND], HttpCode.NOT_FOUND);
+    return metaError(msg || HttpError[HttpErrorCode.NOT_FOUND], HttpErrorCode.NOT_FOUND);
 }
 
 export function unauthorized(msg?: string) {
-    return newError(msg || HttpError[HttpCode.UNAUTHORIZED], HttpCode.UNAUTHORIZED);
+    return metaError(msg || HttpError[HttpErrorCode.UNAUTHORIZED], HttpErrorCode.UNAUTHORIZED);
 }
 
 export function badRequest(msg?: string) {
-    return newError(msg || HttpError[HttpCode.BAD_REQUEST], HttpCode.BAD_REQUEST);
+    return metaError(msg || HttpError[HttpErrorCode.BAD_REQUEST], HttpErrorCode.BAD_REQUEST);
 }
 
 export function serverError(msg?: string) {
-    return newError(msg || HttpError[HttpCode.INTERNAL_SERVER], HttpCode.INTERNAL_SERVER);
+    return metaError(msg || HttpError[HttpErrorCode.INTERNAL_SERVER], HttpErrorCode.INTERNAL_SERVER);
 }
 
-export const metaError = {
-    newError, notFound, unauthorized, badRequest, serverError,
+export function checkError(obj: unknown): obj is { message: string, code: ErrorCode } {
+    return typeof obj === 'object' && obj !== null
+        && 'message' in obj && typeof obj.message === 'string'
+        && 'code' in obj && (typeof obj.code === 'string' || typeof obj.code === 'number');
 }

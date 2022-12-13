@@ -1,5 +1,5 @@
 
-import { Meta, Nil, Mpi, newError } from './meta';
+import { Meta, Nil, Mpi, metaError, checkError } from './meta';
 import { Actor } from './actor';
 
 // although an interface, a domain actually implements things
@@ -202,20 +202,25 @@ export class DomainImpl implements Domain {
 
     async call(method: string, meta: Meta, opts?: Meta) {
         if (meta.isNil()) {
-            return newError(`Calling ${method} with nil meta`);
+            return metaError(`Calling ${method} with nil meta`, 400);
         }
 
         let cat = meta.tag('cat');
         let actor = this.indexer().actorWithMethod(meta.kind, method, cat);
         if (!actor) {
-            return newError(`${meta.kind}.${method} not found`)
+            return metaError(`${meta.kind}.${method} not found`, 404)
         }
 
         try {
             let ret = await actor.process(meta, opts || Nil);
             return ret === undefined ? Nil : ret;
         } catch(err) {
-            return newError(`[${meta.kind}.${method}] ${err}`);
+            if (checkError(err)) {
+                return metaError(`[${meta.kind}.${method}] ${err.message}`, err.code);
+            } else {
+                return metaError(`[${meta.kind}.${method}] ${err}`, 400);
+            }
+
         }
     }
 

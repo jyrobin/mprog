@@ -1,6 +1,7 @@
 import { Meta, toMeta, Mpi, StrMap } from './meta';
 import { Domain, newDomain } from './domain';
 import { Actor } from './actor';
+const debug = require('debug')('mprog:net');
 
 export type RemoteMpiConfig = {
     fetch?: any,
@@ -16,6 +17,8 @@ export class RemoteMpi implements Mpi {
     constructor(uri: string, { fetch, headers }: RemoteMpiConfig = {}) {
         this.uri = uri;
         this.fetch = fetch || (window !== undefined && window.fetch);
+
+        debug('RemoteMpi headers %O', headers);
         this.headers = headers || (() => undefined); 
     }
     call(method: string, meta: Meta, opts?: Meta): Promise<Meta> {
@@ -35,9 +38,11 @@ async function fetchMpi(fetch: any, uri: string, hm: MpiHttpMethod, method: stri
        'content-type': 'application/json',
     };
  
+    headers = headers ? { ...headers, ...httpHeaders } : httpHeaders;
+    debug('%s method: %s meta: %O opts: %O headers: %O', uri, hm, method, meta, opts, headers);
     let res = await fetch(uri, {
         method: hm,
-        headers: headers ? { ...headers, ...httpHeaders } : httpHeaders,
+        headers,
         body: JSON.stringify({
             method,
             meta,

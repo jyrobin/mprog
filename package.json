@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@jyrobin/jslib": "*",
-    "express": "latest",
-    "immutable": "latest"
+    "debug": "latest",
+    "express": "latest"
   },
   "devDependencies": {
     "@types/express": "latest",
