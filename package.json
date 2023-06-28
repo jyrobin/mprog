@@ -1,34 +1,31 @@
 {
   "name": "mprog",
+  "type": "module",
   "version": "0.1.3",
   "description": "Metaphoric programming",
   "repository": "git@github.com:jyrobin/mprog",
   "author": "Jing-Ying Chen <jy.robin.chen@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "build": "yarn tsc"
+    "build": "yarn tsc --build",
+    "clean": "yarn tsc --build --clean",
+    "watch": "yarn tsc --build --watch",
+    "test":  "tsm ../node_modules/uvu/bin.js"
   },
   "dependencies": {
-    "@jyrobin/jslib": "*",
     "debug": "latest",
     "express": "latest"
   },
   "devDependencies": {
     "@types/express": "latest",
     "@types/node": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "uvu": "latest"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./node": "./dist/node/index.js"
-  },
-  "typesVersions": {
-    "*": {
-      "node": [
-        "dist/node"
-      ]
-    }
+    "./*": "./dist/*/index.js"
   }
 }

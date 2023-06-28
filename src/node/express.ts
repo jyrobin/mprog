@@ -1,8 +1,9 @@
 
 import { Request, Response} from 'express'; 
-import { metaError, Meta, Nil, Mpi, toMeta, toMetaOk } from '../index';
+import { metaError, Meta, Nil, Mpi, toMeta, toMetaOk } from '../index.js';
 
-const debug = require('debug')('mprog:express');
+import deb from 'debug';
+const debug = deb('mprog:express');
 
 export type OptsModifier = (req: Request, opts: Meta) => Meta; 
 
@@ -36,7 +37,7 @@ export function simpleMpiHandler(mpi: Mpi, optsModifier?: OptsModifier) {
         const ret = await mpi.call(method, m, opts);
         if (ret.isError()) {
             debug('Error: %O', ret.object());
-            res.status(ret.statusCode() || 400).json(ret);
+            res.status(ret.httpErrorCode() || 400).json(ret);
             return;
         }
 

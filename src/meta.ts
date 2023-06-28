@@ -90,7 +90,8 @@ export interface Meta {
     dateAttrOk(name: string): [Date, boolean]
 
     isError(): boolean
-    statusCode(defaultCode?: number): number
+    errorCode(defaultCode?: number): number|string
+    httpErrorCode(defaultCode?: number): number
     parseError(defaultCode: number): [string, number]
 
     withKind(kind: string): Meta
@@ -131,6 +132,12 @@ export interface Meta {
     json(...opts: string[]): string
     object(expandPayload?: boolean): AnyMap
     toJSON(): AnyMap
+}
+
+export function mt(kind: string = '', ...args: StringValue[]) {
+    return new SimpleMeta({
+        kind, attrs: arrayToStrMap(args),
+    });
 }
 
 export function simpleMeta(kind: string, method?: string, ...tags: string[]) {
@@ -304,9 +311,16 @@ export class SimpleMeta implements Meta {
         if (isNaN(code)) code = defaultCode;
         return [msg?.toString() || '', code];
     }
-    statusCode(defaultCode: number = 500): number {
+    errorCode(defaultCode: number|string = 400): number|string {
+        let { code } = this.attrs;
+        if (code === undefined) return defaultCode;
+
+        let ret = Number(code);
+        return !isNaN(ret) ? ret : code;
+    }
+    httpErrorCode(defaultCode: number = 400): number {
         let code = Number(this.attr('code'));
-        return !isNaN(code) ? code : defaultCode;
+        return !isNaN(code) && code < 600 ? code : defaultCode;
     }
 
     withKind(kind: string): Meta {

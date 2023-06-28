@@ -1,6 +1,6 @@
 
-export * from './meta';
-export * from './actor';
-export * from './domain';
-export * from './net';
+export * from './meta.js';
+export * from './actor.js';
+export * from './domain.js';
+export * from './net.js';
 

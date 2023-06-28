@@ -1,7 +1,8 @@
-import { Meta, toMeta, Mpi, StrMap } from './meta';
-import { Domain, newDomain } from './domain';
-import { Actor } from './actor';
-const debug = require('debug')('mprog:net');
+import { Meta, toMeta, Mpi, StrMap } from './meta.js';
+import { Domain, newDomain } from './domain.js';
+import { Actor } from './actor.js';
+import deb from 'debug';
+const debug = deb('mprog:net');
 
 export type RemoteMpiConfig = {
     fetch?: any,

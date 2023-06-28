@@ -1,6 +1,6 @@
 
-import { Meta, Nil, Mpi, metaError, checkError } from './meta';
-import { Actor } from './actor';
+import { Meta, Nil, Mpi, metaError, checkError } from './meta.js';
+import { Actor } from './actor.js';
 
 // although an interface, a domain actually implements things
 // - so probably better not to use it to qualify things
